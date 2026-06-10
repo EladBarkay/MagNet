@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use tauri::State;
-use crate::project::model::Event;
+use uuid::Uuid;
+use crate::project::model::{Event, PhotoBatch};
 use crate::AppState;
 
 #[tauri::command]
@@ -49,6 +50,25 @@ pub async fn set_output_folder(
     let mut event = state.store.load(event_id).map_err(|e| e.to_string())?;
     event.output_folder = Some(folder);
     state.store.save(&event).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn add_batch(
+    event_id: Uuid,
+    folder: PathBuf,
+    state: State<'_, AppState>,
+) -> Result<Event, String> {
+    let mut event = state.store.load(event_id).map_err(|e| e.to_string())?;
+    let batch_name = folder
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned();
+    let mut batch = PhotoBatch::new(batch_name, folder.clone());
+    batch.photos = scan_folder(&folder)?;
+    event.batches.push(batch);
+    state.store.save(&event).map_err(|e| e.to_string())?;
+    Ok(event)
 }
 
 fn scan_folder(path: &std::path::Path) -> Result<Vec<crate::project::model::Photo>, String> {

@@ -42,7 +42,7 @@ export default function CanvasPresetForm({ event, onCreated, onCancel }: Props) 
     try {
       const preset = await invoke<CanvasPreset>("create_canvas_preset", {
         eventId: event.id,
-        preset: { id: "", name: name.trim(), canvas_width_px: w, canvas_height_px: h,
+        preset: { name: name.trim(), canvas_width_px: w, canvas_height_px: h,
           photos_per_canvas: n, dpi, margin_px: margin, cols, rows },
       });
       onCreated(preset, { ...event, canvas_presets: [...event.canvas_presets, preset] });

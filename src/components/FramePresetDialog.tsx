@@ -39,7 +39,6 @@ export default function FramePresetDialog({ event, onCreated, onClose }: Props) 
       const preset = await invoke<FramePreset>("create_frame_preset", {
         eventId: event.id,
         preset: {
-          id: "",
           name: name.trim(),
           landscape_frame_path: landscapePath,
           portrait_frame_path: portraitPath,

@@ -39,6 +39,7 @@ pub fn run() {
             commands::project::save_event,
             commands::project::list_events,
             commands::project::set_output_folder,
+            commands::project::add_batch,
             commands::gallery::list_photos,
             commands::gallery::get_thumbnail,
             commands::gallery::get_framed_preview,

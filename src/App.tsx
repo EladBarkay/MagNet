@@ -32,6 +32,24 @@ export default function App() {
     }
   }
 
+  async function addBatch() {
+    if (!event) return;
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const folder = await open({ directory: true, multiple: false });
+      if (!folder) return;
+      setStatus("Loading batch…");
+      const updated = await invoke<MagnetEvent>("add_batch", { eventId: event.id, folder });
+      updateEvent(updated);
+      const newBatch = updated.batches[updated.batches.length - 1];
+      if (newBatch) setActiveBatch(newBatch);
+      setSelected(null);
+      setStatus("");
+    } catch (e) {
+      setStatus(`Error: ${e}`);
+    }
+  }
+
   function updateEvent(updated: MagnetEvent) {
     setEvent(updated);
     // Keep activeBatch in sync if its data changed
@@ -100,7 +118,17 @@ export default function App() {
         <aside className="w-52 shrink-0 flex flex-col bg-neutral-850 border-r border-neutral-700 overflow-y-auto">
           {event ? (
             <>
-              <Section label="Batches">
+              <Section
+                label="Batches"
+                action={
+                  <button
+                    onClick={addBatch}
+                    className="text-[10px] text-blue-400 hover:text-blue-300 font-medium"
+                  >
+                    + Add
+                  </button>
+                }
+              >
                 {event.batches.map((b) => (
                   <SidebarItem
                     key={b.id}

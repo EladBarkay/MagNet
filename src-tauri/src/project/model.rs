@@ -63,7 +63,6 @@ pub struct Photo {
 impl Photo {
     pub fn effective_orientation(&self) -> Orientation {
         self.orientation_override
-            .or(self.exif_orientation)
             .unwrap_or_else(|| {
                 if self.width >= self.height {
                     Orientation::Landscape

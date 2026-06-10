@@ -1,7 +1,19 @@
+use std::path::PathBuf;
+use serde::Deserialize;
 use tauri::State;
 use uuid::Uuid;
-use crate::project::model::FramePreset;
+use crate::project::model::{CropMethod, FramePreset};
 use crate::AppState;
+
+#[derive(Deserialize)]
+pub struct FramePresetInput {
+    pub name: String,
+    pub landscape_frame_path: PathBuf,
+    pub portrait_frame_path: PathBuf,
+    pub target_ratio_w: f32,
+    pub target_ratio_h: f32,
+    pub crop_method: CropMethod,
+}
 
 #[tauri::command]
 pub async fn list_frame_presets(
@@ -15,11 +27,19 @@ pub async fn list_frame_presets(
 #[tauri::command]
 pub async fn create_frame_preset(
     event_id: Uuid,
-    preset: FramePreset,
+    preset: FramePresetInput,
     state: State<'_, AppState>,
 ) -> Result<FramePreset, String> {
     let mut event = state.store.load(event_id).map_err(|e| e.to_string())?;
-    let preset = FramePreset { id: Uuid::new_v4(), ..preset };
+    let preset = FramePreset {
+        id: Uuid::new_v4(),
+        name: preset.name,
+        landscape_frame_path: preset.landscape_frame_path,
+        portrait_frame_path: preset.portrait_frame_path,
+        target_ratio_w: preset.target_ratio_w,
+        target_ratio_h: preset.target_ratio_h,
+        crop_method: preset.crop_method,
+    };
     event.frame_presets.push(preset.clone());
     state.store.save(&event).map_err(|e| e.to_string())?;
     Ok(preset)
