@@ -81,6 +81,31 @@ pub fn frame_photo(photo: &Photo, preset: &FramePreset) -> Result<image::Dynamic
     frame::apply_frame_overlay(&cropped, frame_path)
 }
 
+/// Same as `frame_photo` but uses pre-loaded frame images to avoid disk I/O per photo.
+pub fn frame_photo_preloaded(
+    photo: &Photo,
+    preset: &FramePreset,
+    landscape_frame: &image::DynamicImage,
+    portrait_frame: &image::DynamicImage,
+) -> Result<image::DynamicImage> {
+    let loaded = loader::load_photo(&photo.path)?;
+    let orient = orientation::detect_orientation(photo);
+    let frame_img = match orient {
+        crate::project::model::Orientation::Landscape => landscape_frame,
+        crate::project::model::Orientation::Portrait => portrait_frame,
+    };
+    let crop_rect = photo.crop_override.unwrap_or_else(|| {
+        crop::compute_crop_rect(
+            loaded.image.width(),
+            loaded.image.height(),
+            preset.target_ratio(),
+            preset.crop_method,
+        )
+    });
+    let cropped = crop::apply_crop(&loaded.image, crop_rect);
+    frame::apply_frame_overlay_image(&cropped, frame_img)
+}
+
 fn process_one(
     photo: &Photo,
     preset: &FramePreset,

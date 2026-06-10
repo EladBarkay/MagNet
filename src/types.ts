@@ -52,6 +52,7 @@ export type CanvasPreset = {
 export type MagnetEvent = {
   id: string;
   name: string;
+  root_path: string | null;
   batches: PhotoBatch[];
   frame_presets: FramePreset[];
   canvas_presets: CanvasPreset[];

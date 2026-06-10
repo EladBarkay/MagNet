@@ -5,6 +5,7 @@ use crate::project::model::Event;
 
 /// Manages reading/writing event state in `{app_data}/events/`.
 /// Constructed once at app startup from `app.path().app_data_dir()` and held in Tauri state.
+#[derive(Clone)]
 pub struct EventStore {
     base_dir: PathBuf,
 }
@@ -56,6 +57,16 @@ impl EventStore {
     pub fn find_by_source_path(&self, folder: &Path) -> Result<Option<Event>> {
         for event in self.list_all()? {
             if event.batches.iter().any(|b| b.source_path == folder) {
+                return Ok(Some(event));
+            }
+        }
+        Ok(None)
+    }
+
+    /// Find an existing event whose root_path matches `folder`.
+    pub fn find_by_root_path(&self, folder: &Path) -> Result<Option<Event>> {
+        for event in self.list_all()? {
+            if event.root_path.as_deref() == Some(folder) {
                 return Ok(Some(event));
             }
         }

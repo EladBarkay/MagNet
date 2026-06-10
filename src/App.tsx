@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import Gallery from "./components/Gallery";
 import PreviewPanel from "./components/PreviewPanel";
 import ExportDialog from "./components/ExportDialog";
@@ -16,7 +17,42 @@ export default function App() {
   const [modal, setModal] = useState<Modal>(null);
   const [status, setStatus] = useState("");
 
-  async function openFolder() {
+  // Stable ref so the folder-changed listener always sees current event without re-registering
+  const eventRef = useRef<MagnetEvent | null>(null);
+  const activeBatchRef = useRef<PhotoBatch | null>(null);
+  useEffect(() => { eventRef.current = event; }, [event]);
+  useEffect(() => { activeBatchRef.current = activeBatch; }, [activeBatch]);
+
+  // Wire up the FS watcher: when a batch folder changes, refresh that batch
+  useEffect(() => {
+    const unlistenPromise = listen<string>("folder-changed", async (e) => {
+      const cur = eventRef.current;
+      if (!cur) return;
+      const changedFolder = e.payload.replace(/\\/g, "/");
+      const batch = cur.batches.find(
+        (b) => b.source_path.replace(/\\/g, "/") === changedFolder
+      );
+      if (!batch) return;
+      try {
+        const updated = await invoke<MagnetEvent>("refresh_batch", {
+          eventId: cur.id,
+          batchId: batch.id,
+        });
+        setEvent(updated);
+        // Keep activeBatch in sync
+        const active = activeBatchRef.current;
+        if (active) {
+          const refreshed = updated.batches.find((b) => b.id === active.id);
+          if (refreshed) setActiveBatch(refreshed);
+        }
+      } catch (err) {
+        console.error("refresh_batch failed:", err);
+      }
+    });
+    return () => { unlistenPromise.then((u) => u()); };
+  }, []); // register once; reads current event via ref
+
+  async function openEvent() {
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");
       const folder = await open({ directory: true, multiple: false });
@@ -27,6 +63,24 @@ export default function App() {
       setActiveBatch(evt.batches[0] ?? null);
       setSelected(null);
       setStatus("");
+    } catch (e) {
+      setStatus(`Error: ${e}`);
+    }
+  }
+
+  async function deleteEvent() {
+    if (!event) return;
+    const { confirm } = await import("@tauri-apps/plugin-dialog");
+    const yes = await confirm(
+      `Delete event "${event.name}"? This removes all saved settings and cannot be undone.`,
+      { title: "Delete event", kind: "warning" }
+    );
+    if (!yes) return;
+    try {
+      await invoke("delete_event", { eventId: event.id });
+      setEvent(null);
+      setActiveBatch(null);
+      setSelected(null);
     } catch (e) {
       setStatus(`Error: ${e}`);
     }
@@ -52,7 +106,6 @@ export default function App() {
 
   function updateEvent(updated: MagnetEvent) {
     setEvent(updated);
-    // Keep activeBatch in sync if its data changed
     if (activeBatch) {
       const refreshed = updated.batches.find((b) => b.id === activeBatch.id);
       if (refreshed) setActiveBatch(refreshed);
@@ -69,9 +122,9 @@ export default function App() {
       <header className="flex items-center gap-3 px-4 py-2.5 bg-neutral-800 border-b border-neutral-700 shrink-0">
         <span className="font-bold text-base tracking-tight text-white">MagNet</span>
         <div className="w-px h-4 bg-neutral-600" />
-        <button onClick={openFolder}
+        <button onClick={openEvent}
           className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 rounded text-sm font-medium transition-colors">
-          Open Folder
+          Open Event
         </button>
 
         {event && (
@@ -79,8 +132,16 @@ export default function App() {
             <span className="text-neutral-300 text-sm font-medium">{event.name}</span>
             <span className="text-neutral-500 text-xs">{totalPhotos} photos</span>
 
+            {/* Delete event */}
+            <button
+              onClick={deleteEvent}
+              title="Delete this event"
+              className="text-neutral-600 hover:text-red-400 transition-colors"
+            >
+              <TrashIcon />
+            </button>
+
             <div className="ml-auto flex items-center gap-2">
-              {/* Print */}
               <button
                 onClick={() => setModal("print")}
                 disabled={!activeBatch || activeBatch.photos.length === 0 || !hasFramePreset}
@@ -91,7 +152,6 @@ export default function App() {
                 Print
               </button>
 
-              {/* Export */}
               <button
                 onClick={() => setModal("export")}
                 disabled={!activeBatch || activeBatch.photos.length === 0 || !hasFramePreset}
@@ -129,15 +189,24 @@ export default function App() {
                   </button>
                 }
               >
-                {event.batches.map((b) => (
-                  <SidebarItem
-                    key={b.id}
-                    label={b.name}
-                    sublabel={`${b.photos.length} photos`}
-                    active={b.id === activeBatch?.id}
-                    onClick={() => { setActiveBatch(b); setSelected(null); }}
-                  />
-                ))}
+                {event.batches.length === 0 ? (
+                  <p className="px-3 py-1 text-xs text-neutral-600">
+                    No batches —{" "}
+                    <button onClick={addBatch} className="text-blue-400 hover:text-blue-300 underline">
+                      add a folder
+                    </button>
+                  </p>
+                ) : (
+                  event.batches.map((b) => (
+                    <SidebarItem
+                      key={b.id}
+                      label={b.name}
+                      sublabel={`${b.photos.length} photos`}
+                      active={b.id === activeBatch?.id}
+                      onClick={() => { setActiveBatch(b); setSelected(null); }}
+                    />
+                  ))
+                )}
               </Section>
 
               <Section
@@ -194,7 +263,7 @@ export default function App() {
             </>
           ) : (
             <div className="flex-1 flex items-center justify-center text-neutral-600 text-xs p-4 text-center">
-              Open a folder to begin
+              Open an event to begin
             </div>
           )}
         </aside>
@@ -216,7 +285,7 @@ export default function App() {
             )}
           </div>
         ) : (
-          <EmptyState onOpen={openFolder} />
+          <EmptyState onOpen={openEvent} />
         )}
       </div>
 
@@ -298,10 +367,10 @@ function EmptyState({ onOpen }: { onOpen: () => void }) {
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1}
           d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
       </svg>
-      <p className="text-sm">Open a folder to browse photos</p>
+      <p className="text-sm">Open an event to begin</p>
       <button onClick={onOpen}
         className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm font-medium text-white transition-colors">
-        Open Folder
+        Open Event
       </button>
     </div>
   );
@@ -321,6 +390,15 @@ function PrintIcon() {
     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
         d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
     </svg>
   );
 }

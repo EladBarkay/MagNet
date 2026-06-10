@@ -35,14 +35,23 @@ pub fn xmp_path_for(photo_path: &Path) -> Option<PathBuf> {
     if xmp.exists() { Some(xmp) } else { None }
 }
 
-/// SHA-256 of photo bytes + XMP bytes (if present). Used to detect changes and reset print_count.
+/// Fast hash of photo identity using file metadata (size + mtime) instead of full content.
+/// Detects file changes without reading the entire file into memory.
 pub fn compute_content_hash(photo_path: &Path, xmp_path: Option<&Path>) -> Result<String> {
     let mut hasher = Sha256::new();
-    hasher.update(std::fs::read(photo_path)
-        .with_context(|| format!("hashing {}", photo_path.display()))?);
+    hasher.update(photo_path.to_string_lossy().as_bytes());
+    let meta = std::fs::metadata(photo_path)
+        .with_context(|| format!("stat {}", photo_path.display()))?;
+    hasher.update(meta.len().to_le_bytes());
+    if let Ok(mtime) = meta.modified() {
+        hasher.update(format!("{mtime:?}").as_bytes());
+    }
     if let Some(xmp) = xmp_path {
-        if let Ok(xmp_bytes) = std::fs::read(xmp) {
-            hasher.update(xmp_bytes);
+        if let Ok(xmp_meta) = std::fs::metadata(xmp) {
+            hasher.update(xmp_meta.len().to_le_bytes());
+            if let Ok(mtime) = xmp_meta.modified() {
+                hasher.update(format!("{mtime:?}").as_bytes());
+            }
         }
     }
     Ok(format!("{:x}", hasher.finalize()))

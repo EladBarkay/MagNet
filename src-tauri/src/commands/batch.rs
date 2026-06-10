@@ -53,6 +53,12 @@ pub async fn export_batch(
     let photos = batch.photos.clone();
     let output_dir_clone = output_dir.clone();
 
+    // Pre-load both frame images once to avoid re-reading from disk for every photo.
+    let landscape_frame = image::open(&frame_preset.landscape_frame_path)
+        .map_err(|e| format!("loading landscape frame: {e}"))?;
+    let portrait_frame = image::open(&frame_preset.portrait_frame_path)
+        .map_err(|e| format!("loading portrait frame: {e}"))?;
+
     // Background thread — does not block the IPC handler
     std::thread::spawn(move || {
         let chunk_size = canvas_preset.photos_per_canvas as usize;
@@ -64,12 +70,14 @@ pub async fn export_batch(
             let framed: Vec<_> = chunk
                 .par_iter()
                 .filter_map(|photo| {
-                    crate::photo::batch::frame_photo(photo, &frame_preset)
-                        .map_err(|e| {
-                            log::warn!("framing {}: {e}", photo.path.display());
-                            e
-                        })
-                        .ok()
+                    crate::photo::batch::frame_photo_preloaded(
+                        photo, &frame_preset, &landscape_frame, &portrait_frame,
+                    )
+                    .map_err(|e| {
+                        log::warn!("framing {}: {e}", photo.path.display());
+                        e
+                    })
+                    .ok()
                 })
                 .collect();
 
@@ -138,10 +146,19 @@ pub async fn print_photos(
         return Err("no photos selected".into());
     }
 
-    // Frame all photos (parallel)
+    // Pre-load frames once, then frame all photos in parallel
+    let landscape_frame = image::open(&frame_preset.landscape_frame_path)
+        .map_err(|e| format!("loading landscape frame: {e}"))?;
+    let portrait_frame = image::open(&frame_preset.portrait_frame_path)
+        .map_err(|e| format!("loading portrait frame: {e}"))?;
+
     let framed: Vec<_> = photos
         .par_iter()
-        .filter_map(|p| crate::photo::batch::frame_photo(p, &frame_preset).ok())
+        .filter_map(|p| {
+            crate::photo::batch::frame_photo_preloaded(
+                p, &frame_preset, &landscape_frame, &portrait_frame,
+            ).ok()
+        })
         .collect();
 
     // Compose canvases

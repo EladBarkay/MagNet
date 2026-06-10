@@ -1,64 +1,42 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
-use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use anyhow::Result;
 
-pub enum WatchEvent {
-    PhotoAdded(PathBuf),
-    PhotoChanged(PathBuf),
-    FrameChanged(PathBuf),
-}
-
+/// Watches directories and calls `on_folder_changed(parent_dir)` whenever a file
+/// inside is created, modified, or deleted. Deduplicates to one call per folder per event.
 pub struct FsWatcher {
-    _watcher: RecommendedWatcher,
+    watcher: RecommendedWatcher,
 }
 
 impl FsWatcher {
-    pub fn new<F>(callback: F) -> Result<Self>
+    pub fn new<F>(on_folder_changed: F) -> Result<Self>
     where
-        F: Fn(WatchEvent) + Send + Sync + 'static,
+        F: Fn(PathBuf) + Send + 'static,
     {
-        let watched_frames: Arc<Mutex<Vec<PathBuf>>> = Arc::new(Mutex::new(Vec::new()));
-        let frames_ref = Arc::clone(&watched_frames);
-        let cb = Arc::new(callback);
-
-        let watcher = notify::recommended_watcher(move |res: notify::Result<Event>| {
-            let Ok(event) = res else { return };
-            let paths = event.paths;
-            for path in paths {
-                let is_frame = frames_ref
-                    .lock()
-                    .map(|f| f.contains(&path))
-                    .unwrap_or(false);
-
-                if is_frame {
-                    if matches!(event.kind, EventKind::Modify(_)) {
-                        cb(WatchEvent::FrameChanged(path));
+        let watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+            if let Ok(event) = res {
+                let mut folders = HashSet::new();
+                for path in event.paths {
+                    if let Some(parent) = path.parent() {
+                        folders.insert(parent.to_path_buf());
                     }
-                } else if crate::photo::loader::is_supported_image(&path) {
-                    match event.kind {
-                        EventKind::Create(_) => cb(WatchEvent::PhotoAdded(path)),
-                        EventKind::Modify(_) => cb(WatchEvent::PhotoChanged(path)),
-                        _ => {}
-                    }
-                } else if path.extension().and_then(|e| e.to_str()) == Some("xmp") {
-                    cb(WatchEvent::PhotoChanged(path));
+                }
+                for folder in folders {
+                    on_folder_changed(folder);
                 }
             }
         })?;
-
-        Ok(Self { _watcher: watcher })
+        Ok(Self { watcher })
     }
 
-    pub fn watch_dir(&mut self, path: &Path) -> Result<()> {
-        self._watcher.watch(path, RecursiveMode::NonRecursive)?;
+    pub fn watch(&mut self, path: &Path) -> Result<()> {
+        self.watcher.watch(path, RecursiveMode::NonRecursive)?;
         Ok(())
     }
 
-    pub fn watch_frame(&mut self, path: &Path) -> Result<()> {
-        if let Some(parent) = path.parent() {
-            self._watcher.watch(parent, RecursiveMode::NonRecursive)?;
-        }
+    pub fn unwatch(&mut self, path: &Path) -> Result<()> {
+        let _ = self.watcher.unwatch(path);
         Ok(())
     }
 }

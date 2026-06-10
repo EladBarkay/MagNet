@@ -6,6 +6,9 @@ use uuid::Uuid;
 pub struct Event {
     pub id: Uuid,
     pub name: String,
+    /// The folder used to open/identify this event session (not necessarily a batch folder).
+    #[serde(default)]
+    pub root_path: Option<PathBuf>,
     pub batches: Vec<PhotoBatch>,
     pub frame_presets: Vec<FramePreset>,
     pub canvas_presets: Vec<CanvasPreset>,
@@ -18,6 +21,7 @@ impl Event {
         Self {
             id: Uuid::new_v4(),
             name,
+            root_path: None,
             batches: Vec::new(),
             frame_presets: Vec::new(),
             canvas_presets: Vec::new(),
