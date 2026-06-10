@@ -16,6 +16,11 @@ pub fn compose_canvases(
         .collect()
 }
 
+/// Compose a single canvas from a slice of framed images (exposed for the export command).
+pub fn compose_one_canvas(images: &[DynamicImage], preset: &CanvasPreset) -> DynamicImage {
+    compose_one(images, preset)
+}
+
 fn compose_one(images: &[DynamicImage], preset: &CanvasPreset) -> DynamicImage {
     let slot_w = preset.slot_width();
     let slot_h = preset.slot_height();

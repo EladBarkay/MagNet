@@ -64,15 +64,11 @@ pub fn process_batch(
     })
 }
 
-fn process_one(
-    photo: &Photo,
-    preset: &FramePreset,
-    output_dir: &Path,
-) -> Result<ProcessedPhoto> {
+/// Frame a single photo (crop + overlay). Used by both batch export and print flows.
+pub fn frame_photo(photo: &Photo, preset: &FramePreset) -> Result<image::DynamicImage> {
     let loaded = loader::load_photo(&photo.path)?;
     let orient = orientation::detect_orientation(photo);
     let frame_path = preset.frame_path(orient);
-
     let crop_rect = photo.crop_override.unwrap_or_else(|| {
         crop::compute_crop_rect(
             loaded.image.width(),
@@ -81,14 +77,19 @@ fn process_one(
             preset.crop_method,
         )
     });
-
     let cropped = crop::apply_crop(&loaded.image, crop_rect);
-    let framed = frame::apply_frame_overlay(&cropped, frame_path)?;
+    frame::apply_frame_overlay(&cropped, frame_path)
+}
 
+fn process_one(
+    photo: &Photo,
+    preset: &FramePreset,
+    output_dir: &Path,
+) -> Result<ProcessedPhoto> {
+    let framed = frame_photo(photo, preset)?;
     let filename = photo.path.file_stem().unwrap_or_default();
     let output_path = output_dir.join(format!("{}_framed.jpg", filename.to_string_lossy()));
     export::export_print_ready(&framed, &output_path)?;
-
     Ok(ProcessedPhoto {
         photo_id: photo.id,
         output_path,
