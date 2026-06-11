@@ -4,7 +4,8 @@ import { invoke } from "@tauri-apps/api/core";
 export function useFramedPreview(
   eventId: string | null,
   photoId: string | null,
-  presetId: string | null
+  presetId: string | null,
+  nonce: number = 0
 ): string | null {
   const [src, setSrc] = useState<string | null>(null);
 
@@ -34,7 +35,7 @@ export function useFramedPreview(
     return () => {
       cancelled = true;
     };
-  }, [eventId, photoId, presetId]);
+  }, [eventId, photoId, presetId, nonce]);
 
   return src;
 }

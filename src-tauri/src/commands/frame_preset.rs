@@ -46,6 +46,28 @@ pub async fn create_frame_preset(
 }
 
 #[tauri::command]
+pub async fn update_frame_preset(
+    event_id: Uuid,
+    preset_id: Uuid,
+    preset: FramePresetInput,
+    state: State<'_, AppState>,
+) -> Result<FramePreset, String> {
+    let mut event = state.store.load(event_id).map_err(|e| e.to_string())?;
+    let existing = event
+        .frame_presets.iter_mut().find(|p| p.id == preset_id)
+        .ok_or_else(|| format!("frame preset {preset_id} not found"))?;
+    existing.name = preset.name;
+    existing.landscape_frame_path = preset.landscape_frame_path;
+    existing.portrait_frame_path = preset.portrait_frame_path;
+    existing.target_ratio_w = preset.target_ratio_w;
+    existing.target_ratio_h = preset.target_ratio_h;
+    existing.crop_method = preset.crop_method;
+    let updated = existing.clone();
+    state.store.save(&event).map_err(|e| e.to_string())?;
+    Ok(updated)
+}
+
+#[tauri::command]
 pub async fn delete_frame_preset(
     event_id: Uuid,
     preset_id: Uuid,

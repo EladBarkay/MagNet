@@ -56,6 +56,9 @@ pub async fn export_batch(
     let slot_w = canvas_preset.slot_width();
     let slot_h = canvas_preset.slot_height();
 
+    // Free tier => watermark output; Pro => clean.
+    let watermark = matches!(state.tier(), crate::license::validator::Tier::Free);
+
     // Pre-load and pre-resize both frames to canvas slot dimensions.
     // This avoids per-photo disk I/O and makes compositing work on slot-sized
     // images (~1–2 MP) rather than full-resolution photos (~20 MP).
@@ -94,7 +97,10 @@ pub async fn export_batch(
             }
 
             // Compose and write the canvas
-            let canvas = crate::canvas::compositor::compose_one_canvas(&framed, &canvas_preset);
+            let mut canvas = crate::canvas::compositor::compose_one_canvas(&framed, &canvas_preset);
+            if watermark {
+                canvas = crate::canvas::compositor::apply_watermark(&canvas);
+            }
             let filename = format!("canvas_{:04}.jpg", canvas_idx + 1);
             let out_path = output_dir_clone.join(&filename);
 
@@ -124,19 +130,22 @@ pub async fn print_photos(
     photo_ids: Vec<Uuid>,
     quantities: HashMap<Uuid, u32>,
     canvas_preset_id: Uuid,
-    app: tauri::AppHandle,
+    frame_preset_id: Option<Uuid>,
     state: State<'_, AppState>,
-) -> Result<Vec<String>, String> {
+) -> Result<usize, String> {
     let mut event = state.store.load(event_id).map_err(|e| e.to_string())?;
     let canvas_preset = event
         .canvas_presets.iter().find(|p| p.id == canvas_preset_id)
         .ok_or_else(|| format!("canvas preset {canvas_preset_id} not found"))?
         .clone();
-    let frame_preset = event
-        .active_frame_preset_id
+    // Frame preset: explicit choice from the confirm popup, else the active one.
+    let frame_preset = frame_preset_id
+        .or(event.active_frame_preset_id)
         .and_then(|id| event.frame_presets.iter().find(|p| p.id == id))
-        .ok_or("no active frame preset")?
+        .ok_or("no frame preset selected")?
         .clone();
+
+    let watermark = matches!(state.tier(), crate::license::validator::Tier::Free);
 
     // Expand photos by their requested quantities: a photo with qty=3 appears 3 times
     let photos: Vec<_> = event
@@ -173,10 +182,14 @@ pub async fn print_photos(
         })
         .collect();
 
-    // Compose canvases
-    let canvases = crate::canvas::compositor::compose_canvases(&framed, &canvas_preset);
+    // Compose canvases (apply free-tier watermark per canvas)
+    let canvases: Vec<_> = crate::canvas::compositor::compose_canvases(&framed, &canvas_preset)
+        .into_iter()
+        .map(|c| if watermark { crate::canvas::compositor::apply_watermark(&c) } else { c })
+        .collect();
 
-    // Write to temp dir
+    // Write composed canvases to a temp dir. Actual printer submission is
+    // deferred — for now we only produce the print-ready files.
     let tmp_dir = std::env::temp_dir().join("magnet_print");
     std::fs::create_dir_all(&tmp_dir).map_err(|e| e.to_string())?;
 
@@ -198,13 +211,6 @@ pub async fn print_photos(
     }
     state.store.save(&event).map_err(|e| e.to_string())?;
 
-    // Open composed files with the default OS viewer (Photos app on Windows = printable)
-    use tauri_plugin_opener::OpenerExt;
-    for path in &paths {
-        app.opener()
-            .open_path(path.to_string_lossy().as_ref(), None::<&str>)
-            .map_err(|e| e.to_string())?;
-    }
-
-    Ok(paths.iter().map(|p| p.to_string_lossy().into_owned()).collect())
+    // Return the number of print-ready canvas files produced.
+    Ok(paths.len())
 }

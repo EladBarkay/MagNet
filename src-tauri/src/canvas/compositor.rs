@@ -1,5 +1,3 @@
-use std::path::Path;
-use anyhow::Result;
 use image::{DynamicImage, Rgba, RgbaImage};
 use crate::project::model::CanvasPreset;
 
@@ -45,16 +43,33 @@ fn compose_one(images: &[DynamicImage], preset: &CanvasPreset) -> DynamicImage {
     DynamicImage::ImageRgba8(canvas)
 }
 
-/// Composite a semi-transparent watermark in the bottom-right of each canvas.
-pub fn apply_watermark(canvas: &DynamicImage, watermark_path: &Path) -> Result<DynamicImage> {
-    let wm = image::open(watermark_path)?;
+/// Apply a dependency-free, free-tier watermark: tiled translucent diagonal
+/// stripes across the whole canvas. No bundled asset or font is required, so
+/// this is robust regardless of install layout. Pro tier skips this entirely.
+pub fn apply_watermark(canvas: &DynamicImage) -> DynamicImage {
     let mut output = canvas.to_rgba8();
-    let (cw, ch) = (output.width(), output.height());
-    let wm_w = cw / 6;
-    let wm_h = (wm.height() as f32 * wm_w as f32 / wm.width() as f32) as u32;
-    let wm_resized = wm.resize_exact(wm_w, wm_h, image::imageops::FilterType::Lanczos3);
-    let x = cw - wm_w - 20;
-    let y = ch - wm_h - 20;
-    image::imageops::overlay(&mut output, &wm_resized.to_rgba8(), x as i64, y as i64);
-    Ok(DynamicImage::ImageRgba8(output))
+    let (w, h) = (output.width(), output.height());
+
+    // Stripe geometry scales with canvas size so it reads at any resolution.
+    let band = (w.max(h) / 22).max(8); // width of one stripe pair component
+    let period = band * 2;
+    // Translucent white stripes — visible but non-destructive.
+    let alpha: u32 = 38; // out of 255
+
+    for y in 0..h {
+        for x in 0..w {
+            // Diagonal banding: stripe on when (x + y) falls in the first half.
+            if ((x + y) % period) < band {
+                let px = output.get_pixel_mut(x, y);
+                let [r, g, b, a] = px.0;
+                // Blend toward white by `alpha`.
+                let blend = |c: u8| -> u8 {
+                    ((c as u32 * (255 - alpha) + 255 * alpha) / 255) as u8
+                };
+                *px = Rgba([blend(r), blend(g), blend(b), a]);
+            }
+        }
+    }
+
+    DynamicImage::ImageRgba8(output)
 }

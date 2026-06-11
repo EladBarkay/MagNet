@@ -3,27 +3,25 @@ use std::path::{Path, PathBuf};
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use anyhow::Result;
 
-/// Watches directories and calls `on_folder_changed(parent_dir)` whenever a file
-/// inside is created, modified, or deleted. Deduplicates to one call per folder per event.
+/// Watches directories and calls `on_changed(path)` for each file that is
+/// created, modified, or deleted. Emits the full file path so the consumer can
+/// distinguish batch photos from frame PNGs. Deduplicates per event.
 pub struct FsWatcher {
     watcher: RecommendedWatcher,
 }
 
 impl FsWatcher {
-    pub fn new<F>(on_folder_changed: F) -> Result<Self>
+    pub fn new<F>(on_changed: F) -> Result<Self>
     where
         F: Fn(PathBuf) + Send + 'static,
     {
         let watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
             if let Ok(event) = res {
-                let mut folders = HashSet::new();
+                let mut seen = HashSet::new();
                 for path in event.paths {
-                    if let Some(parent) = path.parent() {
-                        folders.insert(parent.to_path_buf());
+                    if seen.insert(path.clone()) {
+                        on_changed(path);
                     }
-                }
-                for folder in folders {
-                    on_folder_changed(folder);
                 }
             }
         })?;
