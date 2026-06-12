@@ -10,12 +10,20 @@ pub fn export_print_ready(image: &DynamicImage, output_path: &Path) -> Result<()
         std::fs::create_dir_all(parent)?;
     }
 
-    let rgb = image.to_rgb8();
+    // Avoid a full-canvas copy when the compositor already produced RGB8.
+    let rgb_owned;
+    let rgb = match image.as_rgb8() {
+        Some(b) => b,
+        None => {
+            rgb_owned = image.to_rgb8();
+            &rgb_owned
+        }
+    };
     let mut buf = Vec::new();
     let mut encoder =
         image::codecs::jpeg::JpegEncoder::new_with_quality(std::io::Cursor::new(&mut buf), 95);
     encoder
-        .encode_image(&rgb)
+        .encode_image(rgb)
         .with_context(|| format!("encoding JPEG for {}", output_path.display()))?;
 
     set_jfif_dpi(&mut buf, PRINT_DPI);

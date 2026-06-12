@@ -188,6 +188,7 @@ mod tests {
             orientation_override: None,
             crop_override: None,
             print_count: 0,
+            export_count: 0,
             content_hash: String::new(),
         }
     }

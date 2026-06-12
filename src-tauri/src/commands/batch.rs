@@ -74,64 +74,79 @@ pub async fn export_batch(
     // Free tier => watermark output; Pro => clean.
     let watermark = matches!(state.tier(), crate::license::validator::Tier::Free);
 
-    // Pre-load and pre-resize both frames to canvas slot dimensions.
-    // This avoids per-photo disk I/O and makes compositing work on slot-sized
-    // images (~1–2 MP) rather than full-resolution photos (~20 MP).
-    let landscape_frame = image::open(&frame_preset.landscape_frame_path)
-        .map_err(|e| format!("loading landscape frame: {e}"))?
-        .resize_exact(slot_w, slot_h, image::imageops::FilterType::Triangle);
-    let portrait_frame = image::open(&frame_preset.portrait_frame_path)
-        .map_err(|e| format!("loading portrait frame: {e}"))?
-        .resize_exact(slot_w, slot_h, image::imageops::FilterType::Triangle);
+    // Prepare both frames ONCE: each is resized (aspect preserved) to its own
+    // orientation-correct placement dims and converted to RGBA8. The per-photo
+    // hot path then does zero frame decoding, resizing, or conversion.
+    let landscape_src = image::open(&frame_preset.landscape_frame_path)
+        .map_err(|e| format!("loading landscape frame: {e}"))?;
+    let portrait_src = image::open(&frame_preset.portrait_frame_path)
+        .map_err(|e| format!("loading portrait frame: {e}"))?;
+    let frames = crate::photo::batch::prepare_frames(
+        &frame_preset, slot_w, slot_h, &landscape_src, &portrait_src,
+    );
 
     // Store a reference to the state so we can update export_count after export
     let store = state.store.clone();
 
     // Background thread — does not block the IPC handler
     std::thread::spawn(move || {
-        let chunk_size = canvas_preset.photos_per_canvas as usize;
+        let chunk_size = (canvas_preset.photos_per_canvas as usize).max(1);
         let total_canvases = if photos.is_empty() { 0 } else { photos.len().div_ceil(chunk_size) };
-        let mut errors: Vec<String> = Vec::new();
+        let done = std::sync::atomic::AtomicUsize::new(0);
 
-        for (canvas_idx, chunk) in photos.chunks(chunk_size).enumerate() {
-            // Frame each photo in the chunk in parallel
+        // Process canvases in parallel, bounded to 4 threads so peak memory
+        // stays ~4 decoded photos (~400MB worst case) under the 500MB ceiling.
+        let process_chunk = |(canvas_idx, chunk): (usize, &[crate::project::model::Photo])| -> Vec<String> {
+            let mut errs: Vec<String> = Vec::new();
             let framed: Vec<_> = chunk
-                .par_iter()
+                .iter()
                 .filter_map(|photo| {
                     crate::photo::batch::frame_photo_for_canvas(
-                        photo, &frame_preset, slot_w, slot_h, &landscape_frame, &portrait_frame,
+                        photo, &frame_preset, slot_w, slot_h, &frames,
                     )
                     .map_err(|e| {
                         log::warn!("framing {}: {e}", photo.path.display());
-                        e
+                        errs.push(format!("{}: {e}", photo.path.display()));
                     })
                     .ok()
                 })
                 .collect();
 
-            if framed.is_empty() {
-                errors.push(format!("canvas {}: all photos failed to frame", canvas_idx + 1));
-                continue;
-            }
-
-            // Compose and write the canvas
-            let mut canvas = crate::canvas::compositor::compose_one_canvas(&framed, &canvas_preset);
-            if watermark {
-                canvas = crate::canvas::compositor::apply_watermark(&canvas);
-            }
             let filename = format!("canvas_{:04}.jpg", canvas_idx + 1);
-            let out_path = output_dir_clone.join(&filename);
-
-            if let Err(e) = crate::photo::export::export_print_ready(&canvas, &out_path) {
-                errors.push(format!("{filename}: {e}"));
+            if framed.is_empty() {
+                errs.push(format!("canvas {}: all photos failed to frame", canvas_idx + 1));
+            } else {
+                let mut canvas =
+                    crate::canvas::compositor::compose_one_canvas(&framed, &canvas_preset);
+                if watermark {
+                    canvas = crate::canvas::compositor::apply_watermark(&canvas);
+                }
+                let out_path = output_dir_clone.join(&filename);
+                if let Err(e) = crate::photo::export::export_print_ready(&canvas, &out_path) {
+                    errs.push(format!("{filename}: {e}"));
+                }
             }
 
+            let d = done.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
             let _ = app.emit("export-progress", ExportProgress {
-                done: canvas_idx + 1,
+                done: d,
                 total: total_canvases,
                 current_file: filename,
             });
-        }
+            errs
+        };
+
+        let run = || -> Vec<String> {
+            photos
+                .par_chunks(chunk_size)
+                .enumerate()
+                .flat_map_iter(process_chunk)
+                .collect()
+        };
+        let errors: Vec<String> = match rayon::ThreadPoolBuilder::new().num_threads(4).build() {
+            Ok(pool) => pool.install(run),
+            Err(_) => run(),
+        };
 
         // Increment export_count for all exported photos
         if let Ok(mut evt) = store.load(event_id) {
@@ -197,22 +212,30 @@ pub async fn print_photos(
     let slot_w = canvas_preset.slot_width();
     let slot_h = canvas_preset.slot_height();
 
-    // Pre-load and pre-resize frames to slot dimensions (same speedup as export_batch)
-    let landscape_frame = image::open(&frame_preset.landscape_frame_path)
-        .map_err(|e| format!("loading landscape frame: {e}"))?
-        .resize_exact(slot_w, slot_h, image::imageops::FilterType::Triangle);
-    let portrait_frame = image::open(&frame_preset.portrait_frame_path)
-        .map_err(|e| format!("loading portrait frame: {e}"))?
-        .resize_exact(slot_w, slot_h, image::imageops::FilterType::Triangle);
+    // Prepare frames once per orientation (aspect preserved, RGBA8) — same as export_batch.
+    let landscape_src = image::open(&frame_preset.landscape_frame_path)
+        .map_err(|e| format!("loading landscape frame: {e}"))?;
+    let portrait_src = image::open(&frame_preset.portrait_frame_path)
+        .map_err(|e| format!("loading portrait frame: {e}"))?;
+    let frames = crate::photo::batch::prepare_frames(
+        &frame_preset, slot_w, slot_h, &landscape_src, &portrait_src,
+    );
 
-    let framed: Vec<_> = photos
-        .par_iter()
-        .filter_map(|p| {
-            crate::photo::batch::frame_photo_for_canvas(
-                p, &frame_preset, slot_w, slot_h, &landscape_frame, &portrait_frame,
-            ).ok()
-        })
-        .collect();
+    // Frame in parallel, bounded to 4 threads to respect the memory ceiling.
+    let frame_all = || -> Vec<_> {
+        photos
+            .par_iter()
+            .filter_map(|p| {
+                crate::photo::batch::frame_photo_for_canvas(
+                    p, &frame_preset, slot_w, slot_h, &frames,
+                ).ok()
+            })
+            .collect()
+    };
+    let framed: Vec<_> = match rayon::ThreadPoolBuilder::new().num_threads(4).build() {
+        Ok(pool) => pool.install(frame_all),
+        Err(_) => frame_all(),
+    };
 
     // Compose canvases (apply free-tier watermark per canvas)
     let canvases: Vec<_> = crate::canvas::compositor::compose_canvases(&framed, &canvas_preset)

@@ -26,6 +26,8 @@ chrono = { version = "0.4", features = ["serde"] }
 
 # Image processing
 image = { version = "0.25", features = ["jpeg", "png", "tiff"] }
+# SIMD crop+resize for the export hot path (pure Rust)
+fast_image_resize = "5"
 
 # EXIF / XMP
 kamadak-exif = "0.5"
@@ -56,3 +58,12 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+
+# Keep `tauri dev` usable for image work: our own code compiles fast at O1,
+# while dependencies (image, zune-jpeg, png, rayon…) get full optimization.
+# Without this, JPEG decode/resize in debug is 10-50× slower than release.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3

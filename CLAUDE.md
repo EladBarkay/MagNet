@@ -47,16 +47,22 @@ Frames are per-event PNGs provided by the photographer (no bundled frames). Path
 
 ### Batch Processing Pipeline
 
-`process_batch(batch, preset, tx)` via `rayon::par_iter` (max 4 concurrent):
+Export/print runs canvases in parallel on a dedicated 4-thread rayon pool (memory ceiling).
+Frames are prepared **once** per run via `prepare_frames()` (per-orientation placement dims,
+aspect preserved, RGBA8). Per photo, `frame_photo_for_canvas()`:
 
-1. `load_photo(path)` → reads image + EXIF + XMP sidecar
-2. `detect_orientation(photo)` → EXIF tag → fall back to pixel dimensions → apply user override
-3. `select_frame(orientation, preset)` → picks landscape or portrait PNG
-4. `crop_image(photo, frame, method)` → computes `CropRect`, applies crop
-5. `apply_frame_overlay(cropped, frame)` → alpha composite
-6. `export_print_ready(framed, out_path)` → RGB JPEG at 300 DPI
+1. `load_photo(path)` → decode (RGB8 for JPEG)
+2. `detect_orientation(photo)` → pixel dimensions → user override
+3. Orientation-aware crop ratio: landscape = preset ratio, portrait = **inverted** ratio
+4. SIMD crop+resize in one pass (`fast_image_resize`, no intermediate copy)
+5. `blend_rgba_over_rgb()` → in-place frame composite (no RGBA round-trip)
+6. Rotate 90° if that fills the slot better (landscape photo in portrait slot)
+7. Compositor centers the result in its slot — white letterbox, **never stretched**
+8. `export_print_ready(framed, out_path)` → RGB JPEG q95 at 300 DPI
 
 Errors per photo: log and skip; batch continues. Progress emitted via Tauri events.
+Perf guard: `cargo test --release -- --ignored perf` asserts <100ms/photo (24MP source).
+Dev profile compiles deps at opt-level 3 so `tauri dev` image work stays usable.
 
 ### Preview Pipeline
 
