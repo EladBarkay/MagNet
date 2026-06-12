@@ -32,6 +32,11 @@ impl AppState {
             .unwrap_or(Tier::Free)
     }
 
+    /// Whether output canvases should be watermarked (Free tier only).
+    pub fn watermark(&self) -> bool {
+        matches!(self.tier(), Tier::Free)
+    }
+
     /// Load license.json from disk into a validated, non-expired LicenseInfo.
     pub fn load_license(app_data_dir: &Path) -> Option<LicenseInfo> {
         let path = app_data_dir.join("license.json");
@@ -77,27 +82,22 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::project::open_event,
-            commands::project::create_event,
             commands::project::save_event,
-            commands::project::list_events,
             commands::project::set_output_folder,
             commands::project::add_batch,
             commands::project::delete_event,
             commands::project::delete_batch,
             commands::project::refresh_batch,
             commands::project::sync_watches,
-            commands::gallery::list_photos,
             commands::gallery::get_thumbnail,
             commands::gallery::get_framed_preview,
             commands::gallery::set_orientation_override,
             commands::gallery::set_crop_override,
             commands::batch::export_batch,
             commands::batch::print_photos,
-            commands::canvas_preset::list_canvas_presets,
             commands::canvas_preset::create_canvas_preset,
             commands::canvas_preset::update_canvas_preset,
             commands::canvas_preset::delete_canvas_preset,
-            commands::frame_preset::list_frame_presets,
             commands::frame_preset::create_frame_preset,
             commands::frame_preset::update_frame_preset,
             commands::frame_preset::delete_frame_preset,

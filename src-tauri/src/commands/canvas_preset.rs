@@ -16,13 +16,25 @@ pub struct CanvasPresetInput {
     pub rows: u8,
 }
 
-#[tauri::command]
-pub async fn list_canvas_presets(
-    event_id: Uuid,
-    state: State<'_, AppState>,
-) -> Result<Vec<CanvasPreset>, String> {
-    let event = state.store.load(event_id).map_err(|e| e.to_string())?;
-    Ok(event.canvas_presets)
+impl CanvasPresetInput {
+    fn into_preset(self, id: Uuid) -> CanvasPreset {
+        CanvasPreset {
+            id,
+            name: self.name,
+            canvas_width_px: self.canvas_width_px,
+            canvas_height_px: self.canvas_height_px,
+            photos_per_canvas: self.photos_per_canvas,
+            dpi: self.dpi,
+            margin_px: self.margin_px,
+            cols: self.cols,
+            rows: self.rows,
+        }
+    }
+
+    fn apply(self, existing: &mut CanvasPreset) {
+        let id = existing.id;
+        *existing = self.into_preset(id);
+    }
 }
 
 #[tauri::command]
@@ -32,17 +44,7 @@ pub async fn create_canvas_preset(
     state: State<'_, AppState>,
 ) -> Result<CanvasPreset, String> {
     let mut event = state.store.load(event_id).map_err(|e| e.to_string())?;
-    let preset = CanvasPreset {
-        id: Uuid::new_v4(),
-        name: preset.name,
-        canvas_width_px: preset.canvas_width_px,
-        canvas_height_px: preset.canvas_height_px,
-        photos_per_canvas: preset.photos_per_canvas,
-        dpi: preset.dpi,
-        margin_px: preset.margin_px,
-        cols: preset.cols,
-        rows: preset.rows,
-    };
+    let preset = preset.into_preset(Uuid::new_v4());
     event.canvas_presets.push(preset.clone());
     state.store.save(&event).map_err(|e| e.to_string())?;
     Ok(preset)
@@ -59,14 +61,7 @@ pub async fn update_canvas_preset(
     let existing = event
         .canvas_presets.iter_mut().find(|p| p.id == preset_id)
         .ok_or_else(|| format!("canvas preset {preset_id} not found"))?;
-    existing.name = preset.name;
-    existing.canvas_width_px = preset.canvas_width_px;
-    existing.canvas_height_px = preset.canvas_height_px;
-    existing.photos_per_canvas = preset.photos_per_canvas;
-    existing.dpi = preset.dpi;
-    existing.margin_px = preset.margin_px;
-    existing.cols = preset.cols;
-    existing.rows = preset.rows;
+    preset.apply(existing);
     let updated = existing.clone();
     state.store.save(&event).map_err(|e| e.to_string())?;
     Ok(updated)

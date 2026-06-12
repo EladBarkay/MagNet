@@ -4,6 +4,8 @@ use rayon::prelude::*;
 use tauri::{Emitter, State};
 use uuid::Uuid;
 use serde::Serialize;
+use crate::photo::batch::{prepare_frames, PreparedFrames};
+use crate::project::model::{FramePreset, Photo};
 use crate::AppState;
 
 #[derive(Serialize, Clone)]
@@ -17,6 +19,42 @@ struct ExportProgress {
 struct ExportComplete {
     errors: Vec<String>,
     output_dir: String,
+}
+
+/// Open both frame PNGs and pre-resize/convert them for a given slot — done once
+/// per export/print run so the per-photo hot path does no frame I/O or conversion.
+fn load_and_prepare_frames(
+    preset: &FramePreset,
+    slot_w: u32,
+    slot_h: u32,
+) -> Result<PreparedFrames, String> {
+    let landscape_src = image::open(&preset.landscape_frame_path)
+        .map_err(|e| format!("loading landscape frame: {e}"))?;
+    let portrait_src = image::open(&preset.portrait_frame_path)
+        .map_err(|e| format!("loading portrait frame: {e}"))?;
+    Ok(prepare_frames(preset, slot_w, slot_h, &landscape_src, &portrait_src))
+}
+
+/// Run `f` on a dedicated 4-thread rayon pool so peak memory stays ~4 decoded
+/// photos under the 500MB ceiling; fall back to the global pool if one can't build.
+fn run_bounded<R, F>(f: F) -> R
+where
+    F: FnOnce() -> R + Send,
+    R: Send,
+{
+    match rayon::ThreadPoolBuilder::new().num_threads(4).build() {
+        Ok(pool) => pool.install(f),
+        Err(_) => f(),
+    }
+}
+
+/// Expand a photo list by per-photo quantity: a photo with qty=3 appears 3 times
+/// (qty floored at 1 so every selected photo is produced at least once).
+fn expand_by_quantity(photos: &[Photo], qty: impl Fn(&Photo) -> u32) -> Vec<Photo> {
+    photos
+        .iter()
+        .flat_map(|p| std::iter::repeat_n(p.clone(), qty(p).max(1) as usize))
+        .collect()
 }
 
 #[tauri::command]
@@ -51,39 +89,20 @@ pub async fn export_batch(
     let output_dir = output_root.join(&timestamp);
     std::fs::create_dir_all(&output_dir).map_err(|e| e.to_string())?;
 
-    let mut photos = batch.photos.clone();
-    let original_photo_ids: Vec<Uuid> = photos.iter().map(|p| p.id).collect();
-    
-    // Expand photos by export quantities
-    // Convert photo IDs to strings for lookup in export_quantities map
-    let mut expanded_photos = Vec::new();
-    for photo in photos.iter() {
-        let photo_id_str = photo.id.to_string();
-        let qty = export_quantities.get(&photo_id_str).copied().unwrap_or(1).max(1);
-        for _ in 0..qty {
-            expanded_photos.push(photo.clone());
-        }
-    }
-    photos = expanded_photos;
-    
+    let original_photo_ids: Vec<Uuid> = batch.photos.iter().map(|p| p.id).collect();
+    let photos = expand_by_quantity(&batch.photos, |p| {
+        export_quantities.get(&p.id.to_string()).copied().unwrap_or(1)
+    });
+
     let output_dir_clone = output_dir.clone();
 
     let slot_w = canvas_preset.slot_width();
     let slot_h = canvas_preset.slot_height();
 
     // Free tier => watermark output; Pro => clean.
-    let watermark = matches!(state.tier(), crate::license::validator::Tier::Free);
+    let watermark = state.watermark();
 
-    // Prepare both frames ONCE: each is resized (aspect preserved) to its own
-    // orientation-correct placement dims and converted to RGBA8. The per-photo
-    // hot path then does zero frame decoding, resizing, or conversion.
-    let landscape_src = image::open(&frame_preset.landscape_frame_path)
-        .map_err(|e| format!("loading landscape frame: {e}"))?;
-    let portrait_src = image::open(&frame_preset.portrait_frame_path)
-        .map_err(|e| format!("loading portrait frame: {e}"))?;
-    let frames = crate::photo::batch::prepare_frames(
-        &frame_preset, slot_w, slot_h, &landscape_src, &portrait_src,
-    );
+    let frames = load_and_prepare_frames(&frame_preset, slot_w, slot_h)?;
 
     // Store a reference to the state so we can update export_count after export
     let store = state.store.clone();
@@ -117,7 +136,7 @@ pub async fn export_batch(
                 errs.push(format!("canvas {}: all photos failed to frame", canvas_idx + 1));
             } else {
                 let mut canvas =
-                    crate::canvas::compositor::compose_one_canvas(&framed, &canvas_preset);
+                    crate::canvas::compositor::compose_one(&framed, &canvas_preset);
                 if watermark {
                     canvas = crate::canvas::compositor::apply_watermark(&canvas);
                 }
@@ -136,17 +155,13 @@ pub async fn export_batch(
             errs
         };
 
-        let run = || -> Vec<String> {
+        let errors: Vec<String> = run_bounded(|| {
             photos
                 .par_chunks(chunk_size)
                 .enumerate()
                 .flat_map_iter(process_chunk)
                 .collect()
-        };
-        let errors: Vec<String> = match rayon::ThreadPoolBuilder::new().num_threads(4).build() {
-            Ok(pool) => pool.install(run),
-            Err(_) => run(),
-        };
+        });
 
         // Increment export_count for all exported photos
         if let Ok(mut evt) = store.load(event_id) {
@@ -192,18 +207,16 @@ pub async fn print_photos(
         .ok_or("no frame preset selected")?
         .clone();
 
-    let watermark = matches!(state.tier(), crate::license::validator::Tier::Free);
+    let watermark = state.watermark();
 
-     // Expand photos by their requested quantities: a photo with qty=3 appears 3 times
-    let photos: Vec<_> = event
+    // Expand photos by their requested quantities: a photo with qty=3 appears 3 times.
+    let selected: Vec<Photo> = event
         .batches.iter()
         .flat_map(|b| &b.photos)
         .filter(|p| photo_ids.contains(&p.id))
-        .flat_map(|p| {
-            let qty = quantities.get(&p.id).copied().unwrap_or(1).max(1);
-            std::iter::repeat_n(p.clone(), qty as usize)
-        })
+        .cloned()
         .collect();
+    let photos = expand_by_quantity(&selected, |p| quantities.get(&p.id).copied().unwrap_or(1));
 
     if photos.is_empty() {
         return Err("no photos selected".into());
@@ -212,17 +225,10 @@ pub async fn print_photos(
     let slot_w = canvas_preset.slot_width();
     let slot_h = canvas_preset.slot_height();
 
-    // Prepare frames once per orientation (aspect preserved, RGBA8) — same as export_batch.
-    let landscape_src = image::open(&frame_preset.landscape_frame_path)
-        .map_err(|e| format!("loading landscape frame: {e}"))?;
-    let portrait_src = image::open(&frame_preset.portrait_frame_path)
-        .map_err(|e| format!("loading portrait frame: {e}"))?;
-    let frames = crate::photo::batch::prepare_frames(
-        &frame_preset, slot_w, slot_h, &landscape_src, &portrait_src,
-    );
+    let frames = load_and_prepare_frames(&frame_preset, slot_w, slot_h)?;
 
     // Frame in parallel, bounded to 4 threads to respect the memory ceiling.
-    let frame_all = || -> Vec<_> {
+    let framed: Vec<_> = run_bounded(|| {
         photos
             .par_iter()
             .filter_map(|p| {
@@ -231,11 +237,7 @@ pub async fn print_photos(
                 ).ok()
             })
             .collect()
-    };
-    let framed: Vec<_> = match rayon::ThreadPoolBuilder::new().num_threads(4).build() {
-        Ok(pool) => pool.install(frame_all),
-        Err(_) => frame_all(),
-    };
+    });
 
     // Compose canvases (apply free-tier watermark per canvas)
     let canvases: Vec<_> = crate::canvas::compositor::compose_canvases(&framed, &canvas_preset)
@@ -256,10 +258,9 @@ pub async fn print_photos(
     }
 
     // Increment print counts and persist
-    let unique_ids: Vec<Uuid> = photo_ids.clone();
     for batch in &mut event.batches {
         for photo in &mut batch.photos {
-            if unique_ids.contains(&photo.id) {
+            if photo_ids.contains(&photo.id) {
                 photo.print_count += quantities.get(&photo.id).copied().unwrap_or(1);
             }
         }

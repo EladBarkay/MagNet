@@ -15,13 +15,23 @@ pub struct FramePresetInput {
     pub crop_method: CropMethod,
 }
 
-#[tauri::command]
-pub async fn list_frame_presets(
-    event_id: Uuid,
-    state: State<'_, AppState>,
-) -> Result<Vec<FramePreset>, String> {
-    let event = state.store.load(event_id).map_err(|e| e.to_string())?;
-    Ok(event.frame_presets)
+impl FramePresetInput {
+    fn into_preset(self, id: Uuid) -> FramePreset {
+        FramePreset {
+            id,
+            name: self.name,
+            landscape_frame_path: self.landscape_frame_path,
+            portrait_frame_path: self.portrait_frame_path,
+            target_ratio_w: self.target_ratio_w,
+            target_ratio_h: self.target_ratio_h,
+            crop_method: self.crop_method,
+        }
+    }
+
+    fn apply(self, existing: &mut FramePreset) {
+        let id = existing.id;
+        *existing = self.into_preset(id);
+    }
 }
 
 #[tauri::command]
@@ -31,15 +41,7 @@ pub async fn create_frame_preset(
     state: State<'_, AppState>,
 ) -> Result<FramePreset, String> {
     let mut event = state.store.load(event_id).map_err(|e| e.to_string())?;
-    let preset = FramePreset {
-        id: Uuid::new_v4(),
-        name: preset.name,
-        landscape_frame_path: preset.landscape_frame_path,
-        portrait_frame_path: preset.portrait_frame_path,
-        target_ratio_w: preset.target_ratio_w,
-        target_ratio_h: preset.target_ratio_h,
-        crop_method: preset.crop_method,
-    };
+    let preset = preset.into_preset(Uuid::new_v4());
     event.frame_presets.push(preset.clone());
     state.store.save(&event).map_err(|e| e.to_string())?;
     Ok(preset)
@@ -56,12 +58,7 @@ pub async fn update_frame_preset(
     let existing = event
         .frame_presets.iter_mut().find(|p| p.id == preset_id)
         .ok_or_else(|| format!("frame preset {preset_id} not found"))?;
-    existing.name = preset.name;
-    existing.landscape_frame_path = preset.landscape_frame_path;
-    existing.portrait_frame_path = preset.portrait_frame_path;
-    existing.target_ratio_w = preset.target_ratio_w;
-    existing.target_ratio_h = preset.target_ratio_h;
-    existing.crop_method = preset.crop_method;
+    preset.apply(existing);
     let updated = existing.clone();
     state.store.save(&event).map_err(|e| e.to_string())?;
     Ok(updated)

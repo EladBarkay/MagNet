@@ -15,12 +15,8 @@ pub fn compose_canvases(
         .collect()
 }
 
-/// Compose a single canvas from a slice of framed images (exposed for the export command).
-pub fn compose_one_canvas(images: &[DynamicImage], preset: &CanvasPreset) -> DynamicImage {
-    compose_one(images, preset)
-}
-
-fn compose_one(images: &[DynamicImage], preset: &CanvasPreset) -> DynamicImage {
+/// Compose a single canvas from a slice of framed images.
+pub fn compose_one(images: &[DynamicImage], preset: &CanvasPreset) -> DynamicImage {
     let slot_w = preset.slot_width();
     let slot_h = preset.slot_height();
     let margin = preset.margin_px;
@@ -119,7 +115,7 @@ mod tests {
     fn smaller_image_is_centered_with_white_letterbox_not_stretched() {
         // Slot = 120×160. Image 100×160 → 10px white letterbox on each side.
         let preset = two_up_preset();
-        let canvas = compose_one_canvas(&[solid(100, 160, GREEN)], &preset).to_rgba8();
+        let canvas = compose_one(&[solid(100, 160, GREEN)], &preset).to_rgba8();
 
         assert_eq!((canvas.width(), canvas.height()), (240, 160));
         // Letterbox edges stay white.
@@ -134,7 +130,7 @@ mod tests {
     #[test]
     fn exact_slot_size_image_fills_slot_without_resampling() {
         let preset = two_up_preset();
-        let canvas = compose_one_canvas(&[solid(120, 160, GREEN), solid(120, 160, GREEN)], &preset)
+        let canvas = compose_one(&[solid(120, 160, GREEN), solid(120, 160, GREEN)], &preset)
             .to_rgba8();
         // Both slots fully covered, corner-to-corner.
         assert_eq!(canvas.get_pixel(0, 0), &GREEN);
@@ -146,7 +142,7 @@ mod tests {
     #[test]
     fn second_slot_stays_white_when_canvas_is_partial() {
         let preset = two_up_preset();
-        let canvas = compose_one_canvas(&[solid(120, 160, GREEN)], &preset).to_rgba8();
+        let canvas = compose_one(&[solid(120, 160, GREEN)], &preset).to_rgba8();
         // Second slot untouched.
         assert_eq!(canvas.get_pixel(180, 80), &WHITE);
     }
@@ -155,7 +151,7 @@ mod tests {
     fn oversized_image_is_contained_not_stretched() {
         // 300×160 (1.875:1) into 120×160 slot → contain-fit to 120×64, aspect kept.
         let preset = two_up_preset();
-        let canvas = compose_one_canvas(&[solid(300, 160, GREEN)], &preset).to_rgba8();
+        let canvas = compose_one(&[solid(300, 160, GREEN)], &preset).to_rgba8();
         // Vertically centered band: white above/below, green in the middle.
         assert_eq!(canvas.get_pixel(60, 10), &WHITE);
         assert_eq!(canvas.get_pixel(60, 80), &GREEN);

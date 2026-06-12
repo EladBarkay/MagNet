@@ -4,21 +4,6 @@ use crate::project::model::{CropRect, Orientation};
 use crate::AppState;
 
 #[tauri::command]
-pub async fn list_photos(
-    batch_id: Uuid,
-    state: State<'_, AppState>,
-) -> Result<Vec<crate::project::model::Photo>, String> {
-    // Walk all events to find the batch
-    let events = state.store.list_all().map_err(|e| e.to_string())?;
-    for event in events {
-        if let Some(batch) = event.batches.iter().find(|b| b.id == batch_id) {
-            return Ok(batch.photos.clone());
-        }
-    }
-    Err(format!("batch {batch_id} not found"))
-}
-
-#[tauri::command]
 pub async fn get_thumbnail(
     photo_path: String,
     state: State<'_, AppState>,

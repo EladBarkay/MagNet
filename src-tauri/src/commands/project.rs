@@ -6,11 +6,6 @@ use crate::project::model::{Event, Photo, PhotoBatch};
 use crate::AppState;
 
 #[tauri::command]
-pub async fn list_events(state: State<'_, AppState>) -> Result<Vec<Event>, String> {
-    state.store.list_all().map_err(|e| e.to_string())
-}
-
-#[tauri::command]
 pub async fn open_event(path: PathBuf, state: State<'_, AppState>) -> Result<Event, String> {
     // Resume by root_path first, then fall back to legacy batch-path lookup
     if let Some(event) = state.store.find_by_root_path(&path).map_err(|e| e.to_string())? {
@@ -28,13 +23,6 @@ pub async fn open_event(path: PathBuf, state: State<'_, AppState>) -> Result<Eve
         .into_owned();
     let mut event = Event::new(folder_name);
     event.root_path = Some(path);
-    state.store.save(&event).map_err(|e| e.to_string())?;
-    Ok(event)
-}
-
-#[tauri::command]
-pub async fn create_event(name: String, state: State<'_, AppState>) -> Result<Event, String> {
-    let event = Event::new(name);
     state.store.save(&event).map_err(|e| e.to_string())?;
     Ok(event)
 }
