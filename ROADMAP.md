@@ -1,200 +1,77 @@
-# MagNet Roadmap — v1.1+
+# MagNet Roadmap
 
-## Vision
+## Status: v0.1.0 (feature-complete, demo-ready)
 
-Expand MagNet beyond core photo framing into a professional event photography suite with cloud collaboration, advanced editing, and extensibility.
-
----
-
-## Tier 4.1: Cloud & Collaboration (v1.1)
-
-### Multi-Device Sync
-- Sync event state across photographer's devices (laptop, tablet)
-- Sync location: cloud provider (AWS S3, Dropbox, or self-hosted)
-- Conflict resolution: last-modified-wins or manual merge UI
-- Bandwidth-conscious: delta sync magnet.json only, not raw photos
-
-### Cloud Backup
-- Optional backup of event metadata + magnet.json
-- Thumbnail cache synchronized
-- License key cloud validation (optional; offline works in v1.0)
-- Photographer can recover events if local device lost
-
-### Shared Event Galleries
-- Photographer exports event gallery link (read-only)
-- Client views framed photos, provides feedback (star rating, notes)
-- Photographer sees feedback in-app, can adjust presets accordingly
-- No photo editor needed by client; purely review/feedback loop
+Core pipeline is working: event/batch management, gallery, framed preview, export, print, FS watcher, licensing.
 
 ---
 
-## Tier 4.2: Advanced Editing (v1.2)
+## v1.0 — Production-Ready
 
-### In-App XMP Editor
-- Modal to edit XMP adjustments per photo:
-  - Exposure (brightness, black point, white point)
-  - White balance (color temperature, tint)
-  - Saturation, vibrance, contrast
-  - Shadows, highlights, clarity
-- Real-time preview of adjustments on framed image
-- Copy adjustments across similar photos (batch edit)
-- Save adjustments to XMP sidecar or magnet.json (photographer's choice)
+### Tier 2: Feature Completeness
 
-### Photo Tagging & Filtering
-- Star ratings (1-5) per photo
-- Flags (pick, reject, review)
-- Keyword tagging (e.g., "group photo", "close-up", "problematic")
-- Filter gallery by: star, flag, keyword
-- Persist tags to XMP sidecar
+| # | Task | Files | Estimate |
+|---|------|-------|----------|
+| 2.1 | Frame preset edit UI | `FramePresetDialog.tsx`, `commands/frame_preset.rs` | 2-3h |
+| 2.2 | Photo crop/rotation override UI | `PreviewPanel.tsx`, `commands/gallery.rs` | 3-4h |
+| 2.3 | XMP sidecar processing (read adjustments, apply on export) | `photo/loader.rs`, `photo/batch.rs` | 4-5h |
+| 2.4 | RAW format support (CR2, NEF, ARW, DNG) — embedded JPEG for gallery, demosaiced for export | `Cargo.toml` (+rawloader), `photo/loader.rs` | 5-6h |
 
-### Batch Metadata Edit
-- Select multiple photos
-- Apply tags, keywords, or ratings in one action
-- Bulk XMP adjustments (e.g., all photos +0.3 exposure)
+### Tier 3: Robustness & Polish
 
-### Preset Library Sharing
-- Export frame presets → JSON file (shareable)
-- Export canvas presets → JSON file
-- Import presets from community or friends
-- Monetization: sell presets via Gumroad/Patreon (v1.3)
+| # | Task | Files | Estimate |
+|---|------|----------|----------|
+| 3.1 | Unit tests — crop module | `photo/crop.rs` | 2h |
+| 3.2 | Unit tests — frame overlay | `photo/frame.rs` | 2h |
+| 3.3 | Unit tests — license validator | `license/validator.rs` | 2-3h |
+| 3.4 | Unit tests — canvas compositor | `canvas/compositor.rs` | 2-3h |
+| 3.5 | Export error tracking + retry UI | `ExportDialog.tsx`, `commands/batch.rs` | 3h |
+| 3.6 | Memory benchmark + optimization (target: <500MB for 100 photos) | `commands/batch.rs` | 2-3h |
+| 3.7 | Dark mode theme toggle | `App.tsx`, `SettingsDialog.tsx`, all components | 2-3h |
 
----
+### Performance Targets (v1.0 gate)
 
-## Tier 4.3: RAW Ecosystem (v1.2)
-
-### `rawloader` Crate Integration
-- Support for all major RAW formats:
-  - Canon: CR2, CRW
-  - Nikon: NEF, NRW
-  - Sony: ARW, SR2
-  - Fujifilm: RAF
-  - Panasonic: RW2
-  - DNG (Adobe standard)
-- Embedded JPEG preview for fast gallery load
-- Full demosaicing for export/print (high quality)
-
-### Color Profile Management
-- Built-in sRGB, Adobe RGB, ProPhoto RGB profiles
-- Camera-specific color matrices (CFA interpolation)
-- Output profile selection (sRGB for web, Adobe RGB for print)
-- Soft proofing in preview (simulate print output)
-
-### Camera-Specific Demosaicing
-- Bayer sensor support (most cameras)
-- X-Trans sensor support (Fujifilm, Samsung)
-- Edge-aware demosaicing (reduce artifacts)
-- Adjustable demosaicing quality (fast vs high-quality)
+| Metric | Target |
+|--------|--------|
+| Export per photo | ≤ 0.1s (100 photos ≤ 10s total) |
+| Framed preview | < 500ms |
+| Thumbnail load | < 200ms (from disk cache) |
+| Gallery scroll | 60 FPS (react-window virtual list) |
+| Memory peak (100 photos) | < 500MB (rayon 4-concurrent, ~70MB/photo) |
 
 ---
 
-## Tier 4.4: Feature Tier Expansion (v1.3)
+## v1.1 — Cloud & Collaboration
 
-### Licensing Model
+- Multi-device sync (delta sync `magnet.json` only; photo files stay local)
+- Cloud backup of event metadata + thumbnail cache
+- Shared event gallery link for client feedback (read-only, star ratings)
+
+## v1.2 — Advanced Editing
+
+- In-app XMP editor per photo (exposure, white balance, saturation, contrast) with real-time preview
+- Photo tagging & filtering (star ratings, flags, keywords; persisted to XMP)
+- Batch metadata edit (apply tags/adjustments to selection)
+- Preset library sharing (export/import frame & canvas presets as JSON)
+
+## v1.3 — Ecosystem & Monetization
+
+Licensing tiers:
 
 | Tier | Features | Price |
 |------|----------|-------|
-| **Free** | JPG/PNG framing, 1 frame preset, 1 canvas preset, watermark | Free |
-| **Pro** | + RAW support, no watermark, unlimited presets, XMP editing, cloud backup | $79/year |
-| **Studio** | + team management, frame library, API access, white-label export | $199/year |
+| Free | JPG/PNG framing, 1 frame + 1 canvas preset, watermark | Free |
+| Pro | RAW support, no watermark, unlimited presets, XMP editor, cloud backup | $79/yr |
+| Studio | Team management, frame library, API access, white-label export | $199/yr |
 
-### Free Tier Expansion
-- Current: output watermarked
-- New: no watermark removal needed (watermark is v1.0 limitation, not v1.1 feature gate)
-- Focus: watermark removes friction for free users to upgrade to Pro
+Additional:
+- Bundled frame library (50+ curated frames; in-app marketplace)
+- Canvas preset marketplace (community presets; 70/30 revenue split)
+- Print-on-demand API integrations (Printful, PrintNinja)
+- Tablet companion app (iOS/Android — read-only gallery + remote preset selection)
 
-### Pro Tier Features
-- No watermark on exports
-- Unlimited frame & canvas presets (free = 5 each)
-- XMP editor with batch adjustments
-- Cloud backup (1GB per year; pay for more)
-- Priority support
+## v2.0+ — Long-Term Vision
 
-### Studio Tier Features
-- All Pro features
-- Team management (add photographers, assign events)
-- Frame library access (500+ curated frames)
-- White-label export (custom branding)
-- REST API for integrations (e.g., auto-export to Dropbox)
-- Dedicated support
-
----
-
-## Tier 4.5: Ecosystem
-
-### Bundled Frame Library
-- 50+ curated frames for different event types (wedding, portrait, event, sports)
-- In-app marketplace (download individual frames or bundles)
-- Community frames (photographer-submitted, curated)
-- License: CC-BY-NC for Pro tier, usage rights clear
-
-### Canvas Preset Marketplace
-- Community presets (2-up, 4-up, custom grids)
-- Photography-specific layouts (headshots, family groups, couple poses)
-- Monetization: 70% to creator, 30% to MagNet
-
-### Batch Print Queue
-- Queue events for printing (instead of one-at-a-time)
-- Schedule exports: "print all events for June on July 1st"
-- Integration with print-on-demand APIs (e.g., Printful, PrintNinja)
-- Order tracking in app
-
-### Tablet Companion App (iOS/Android)
-- Read-only preview of gallery on iPad
-- Remote frame/canvas preset selection (send to desktop app)
-- Feedback/rating on photos (syncs to desktop)
-- Print queue management
-- Cross-platform via React Native or Flutter
-
----
-
-## Implementation Notes
-
-### Technology Debt
-- **Cloud backend**: Consider Supabase (PostgreSQL + real-time sync) vs self-hosted
-- **Color management**: Embed small ICC profiles; avoid external dependencies
-- **API design**: RESTful with OAuth for third-party integrations
-
-### Monetization Timeline
-- v1.1: Cloud & collaboration (free tier for individuals, Pro tier for watermark-free)
-- v1.2: Advanced editing & RAW (Pro tier feature)
-- v1.3: Team management, marketplace, Studio tier
-- v1.4+: White-label, API, ecosystem growth
-
-### Success Metrics (Tier 4)
-- 50%+ of users upgrade to Pro (from free)
-- 10+ community presets created per month
-- 5+ marketplace transactions per month (v1.3+)
-- NPS > 50 (user satisfaction)
-
----
-
-## Post-Roadmap: Long-Term Vision
-
-### AI-Powered Features (v2.0+)
-- Auto-crop & frame detection (suggest best frame for each photo)
-- Smile/eye-closed detection (flag for review)
-- Background blur suggestions
-- Recommended presets per event type
-
-### Mobile-First (v2.0+)
-- Native iOS/Android app with full editing
-- Offline-first sync (local DB, cloud reconciliation)
-- Quick export via phone camera
-
-### Integrations (v2.0+)
-- Lightroom plugin (apply presets directly)
-- Capture One plugin
-- Print-on-demand APIs (Printful, Printmate)
-- Dropbox/Google Drive auto-sync
-
----
-
-## Decision Checkpoints
-
-Before implementing each tier:
-- [ ] Tier 4.1: Confirm cloud provider (AWS S3, Dropbox, self-hosted?)
-- [ ] Tier 4.2: Beta test XMP editor with 5 photographers
-- [ ] Tier 4.3: Benchmark RAW demosaicing performance
-- [ ] Tier 4.4: Legal review of licensing terms
-- [ ] Tier 4.5: Community feedback on frame library curation
-
+- AI auto-crop, smile/eye-closed detection, background blur suggestions
+- Native mobile app (offline-first, quick export)
+- Lightroom/Capture One plugin, Dropbox/Drive auto-sync
