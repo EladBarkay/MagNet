@@ -6,6 +6,7 @@ mod canvas;
 mod watcher;
 mod auth;
 mod json_store;
+mod constants;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -93,7 +94,7 @@ pub fn run() {
 
             let app_handle = app.handle().clone();
             let fs_watcher = FsWatcher::new(move |path: PathBuf| {
-                let _ = app_handle.emit("fs-changed", path.to_string_lossy().to_string());
+                let _ = app_handle.emit(constants::events::FS_CHANGED, path.to_string_lossy().to_string());
             }).expect("FsWatcher init");
 
             // Dev bypass takes precedence; otherwise load cached session + entitlement.
@@ -200,7 +201,7 @@ async fn auth_refresh_loop(app: tauri::AppHandle) {
                     if let Ok(mut guard) = state.auth.lock() {
                         *guard = None;
                     }
-                    let _ = app.emit("license-expired", ());
+                    let _ = app.emit(constants::events::LICENSE_EXPIRED, ());
                     break;
                 }
                 // Stay on cached tier; retry in 60s.
@@ -227,7 +228,7 @@ async fn auth_refresh_loop(app: tauri::AppHandle) {
         if let Ok(mut guard) = state.auth.lock() {
             *guard = Some(AuthState { session, entitlement });
         }
-        let _ = app.emit("tier-changed", ());
+        let _ = app.emit(constants::events::TIER_CHANGED, ());
         break; // Done for this session.
     }
 }

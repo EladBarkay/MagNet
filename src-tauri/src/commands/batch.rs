@@ -143,7 +143,7 @@ pub async fn export_batch(
             }
 
             let d = done.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
-            let _ = app.emit("export-progress", ExportProgress {
+            let _ = app.emit(crate::constants::events::EXPORT_PROGRESS, ExportProgress {
                 done: d,
                 total: total_canvases,
                 current_file: filename,
@@ -173,7 +173,7 @@ pub async fn export_batch(
             let _ = store.save(&evt);
         }
 
-        let _ = app.emit("export-complete", ExportComplete {
+        let _ = app.emit(crate::constants::events::EXPORT_COMPLETE, ExportComplete {
             errors,
             output_dir: output_dir_clone.to_string_lossy().into_owned(),
         });
