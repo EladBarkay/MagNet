@@ -20,7 +20,7 @@ MagNet lets photographers drag in an SD card dump, pick a decorative frame PNG p
 | EXIF / XMP | `kamadak-exif` + `quick-xml` |
 | Parallelism | `rayon` (CPU-bound batch), `tokio` (async IPC) |
 | File watching | `notify` crate |
-| Licensing | HMAC-SHA256 + base32 (offline, baked at compile time) |
+| Licensing | Server-issued tokens, 14-day offline grace period, HMAC-SHA256 device binding |
 
 ---
 
@@ -70,8 +70,8 @@ MagNet/
 │   │   ├── Toolbar.tsx         # Top bar: open event, batch-wide qty stepper, print/export
 │   │   ├── Sidebar.tsx         # Event tree: batches + frame presets + canvas presets
 │   │   ├── Gallery.tsx         # react-window virtual grid of photo thumbnails
-│   │   ├── PhotoCard.tsx       # Thumbnail tile + print-count badge + qty stepper
-│   │   ├── PreviewPanel.tsx    # Framed preview + orientation override + metadata
+│   │   ├── PhotoCard.tsx       # Thumbnail tile + qty stepper (bottom overlay)
+│   │   ├── PreviewPanel.tsx    # Framed preview + orientation override + export/print counts
 │   │   ├── ExportDialog.tsx    # Export config, per-photo qty, progress bar
 │   │   ├── PrintConfirmDialog.tsx  # Frame + canvas preset pickers → print
 │   │   ├── FramePresetDialog.tsx   # Create / edit frame preset
@@ -95,7 +95,7 @@ MagNet/
 │   │   │   ├── batch.rs        # export_batch, print_photos (watermark per tier)
 │   │   │   ├── canvas_preset.rs
 │   │   │   ├── frame_preset.rs
-│   │   │   └── license.rs      # validate_license, get_license_info, clear_license
+│   │   │   └── license.rs      # activate_init, activate_confirm, activate_dev_license, get_license_info, clear_license
 │   │   ├── photo/              # Core image engine — zero Tauri deps, fully unit-tested
 │   │   │   ├── loader.rs       # load_photo(), read_exif_orientation(), compute_content_hash()
 │   │   │   ├── orientation.rs  # detect_orientation() — pixel dims + user override
@@ -112,7 +112,9 @@ MagNet/
 │   │   │   ├── thumbnail.rs    # 256px disk cache at {app_cache}/thumbs/{sha256}.jpg
 │   │   │   └── framed_preview.rs  # On-demand 1200px Rust renderer
 │   │   ├── license/
-│   │   │   └── validator.rs    # HMAC-SHA256 key validation
+│   │   │   ├── validator.rs    # LicenseInfo cache (load/save), device-ID binding, grace period check
+│   │   │   ├── client.rs       # HTTP activation (activate_init/confirm, revalidate, deactivate)
+│   │   │   └── device.rs       # Hardware-stable device fingerprint via machine-uid
 │   │   └── watcher/
 │   │       └── fs_watcher.rs   # notify watcher → emits `fs-changed` Tauri event
 │   ├── .cargo/config.toml      # Windows: rust-lld linker + /DEBUG:FASTLINK
@@ -154,8 +156,9 @@ Event
               └── photos[]
                     ├── path, width, height
                     ├── exif_orientation, orientation_override
-                    ├── content_hash  ← SHA-256(photo bytes + XMP); resets print_count on change
-                    └── print_count
+                    ├── content_hash   ← SHA-256(photo bytes + XMP); resets print_count on change
+                    ├── print_count
+                    └── export_count
 ```
 
 `FramePreset` stores absolute paths to two PNGs (landscape + portrait orientation variants), the target aspect ratio, and the crop method (center or rule-of-thirds).
@@ -189,12 +192,14 @@ Batch runs on a **4-thread rayon pool** (memory ceiling ~400 MB for 24 MP photos
 
 ### Licensing
 
-Key format: `MAGNET-{BASE32(HMAC-SHA256(email|expiry|tier, SECRET))}`
+Activation flow: email + license key → server sends OTP → OTP confirmed → `license.json` written to `{app_data}/`.
 
 - **Free tier**: output canvases get a procedural diagonal-stripe watermark composited at export/print time. No other limits.
-- **Pro tier**: no watermark.
+- **Pro / Studio tiers**: no watermark; tier is server-issued and cached locally.
 
-The HMAC secret is baked into the binary at compile time via the `MAGNET_LICENSE_SECRET` env var. Validation is fully offline.
+The cached license is bound to the device via a hardware fingerprint (`machine-uid`). If the device ID in `license.json` doesn't match, the file is rejected. Offline use is allowed for **14 days** after the last successful server revalidation; after that the license is cleared and the app falls back to Free.
+
+Background revalidation runs at startup (and retries every 60 s if the server was unreachable). A `tier-changed` or `license-expired` Tauri event is emitted when the result differs from the cached state.
 
 ---
 
@@ -221,6 +226,8 @@ cargo test --release -- --ignored perf             # perf guard: asserts <100ms/
 | Variable | Purpose | Default |
 |---|---|---|
 | `MAGNET_LICENSE_SECRET` | HMAC secret baked into binary at `cargo build`. **Change before any production build.** | `"dev-secret-change-in-prod"` |
+| `MAGNET_DEV_EMAIL` | Developer bypass email — activates Pro instantly, no OTP, no server call. | `eladb1231@gmail.com` |
+| `MAGNET_DEV_KEY` | Developer bypass key — pair with `MAGNET_DEV_EMAIL` in Settings to activate. | `DEV-MAGNET-PRO` |
 
 ---
 
