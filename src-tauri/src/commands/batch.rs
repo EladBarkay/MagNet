@@ -79,14 +79,8 @@ pub async fn export_batch(
 ) -> Result<(), String> {
     let event = state.store.load(event_id).map_err(|e| e.to_string())?;
 
-    let canvas_preset = event
-        .canvas_presets.iter().find(|p| p.id == canvas_preset_id)
-        .ok_or_else(|| format!("canvas preset {canvas_preset_id} not found"))?
-        .clone();
-    let frame_preset = event
-        .frame_presets.iter().find(|p| p.id == frame_preset_id)
-        .ok_or_else(|| format!("frame preset {frame_preset_id} not found"))?
-        .clone();
+    let canvas_preset = event.find_canvas_preset(canvas_preset_id)?.clone();
+    let frame_preset = event.find_frame_preset(frame_preset_id)?.clone();
     let output_root = event
         .output_folder.as_ref()
         .ok_or("no output folder configured — set one in event settings")?
@@ -196,14 +190,8 @@ pub async fn print_photos(
     state: State<'_, AppState>,
 ) -> Result<usize, String> {
     let mut event = state.store.load(event_id).map_err(|e| e.to_string())?;
-    let canvas_preset = event
-        .canvas_presets.iter().find(|p| p.id == canvas_preset_id)
-        .ok_or_else(|| format!("canvas preset {canvas_preset_id} not found"))?
-        .clone();
-    let frame_preset = event
-        .frame_presets.iter().find(|p| p.id == frame_preset_id)
-        .ok_or_else(|| format!("frame preset {frame_preset_id} not found"))?
-        .clone();
+    let canvas_preset = event.find_canvas_preset(canvas_preset_id)?.clone();
+    let frame_preset = event.find_frame_preset(frame_preset_id)?.clone();
 
     let watermark = state.watermark();
 

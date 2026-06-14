@@ -55,9 +55,7 @@ pub async fn update_frame_preset(
     state: State<'_, AppState>,
 ) -> Result<FramePreset, String> {
     let mut event = state.store.load(event_id).map_err(|e| e.to_string())?;
-    let existing = event
-        .frame_presets.iter_mut().find(|p| p.id == preset_id)
-        .ok_or_else(|| format!("frame preset {preset_id} not found"))?;
+    let existing = event.find_frame_preset_mut(preset_id)?;
     preset.apply(existing);
     let updated = existing.clone();
     state.store.save(&event).map_err(|e| e.to_string())?;

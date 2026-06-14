@@ -58,9 +58,7 @@ pub async fn update_canvas_preset(
     state: State<'_, AppState>,
 ) -> Result<CanvasPreset, String> {
     let mut event = state.store.load(event_id).map_err(|e| e.to_string())?;
-    let existing = event
-        .canvas_presets.iter_mut().find(|p| p.id == preset_id)
-        .ok_or_else(|| format!("canvas preset {preset_id} not found"))?;
+    let existing = event.find_canvas_preset_mut(preset_id)?;
     preset.apply(existing);
     let updated = existing.clone();
     state.store.save(&event).map_err(|e| e.to_string())?;

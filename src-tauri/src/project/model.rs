@@ -52,6 +52,56 @@ impl Event {
         }
         modified
     }
+
+    /// Find a canvas preset by id, or a "not found" error message suitable for IPC.
+    pub fn find_canvas_preset(&self, id: Uuid) -> Result<&CanvasPreset, String> {
+        self.canvas_presets
+            .iter()
+            .find(|p| p.id == id)
+            .ok_or_else(|| format!("canvas preset {id} not found"))
+    }
+
+    /// Find a canvas preset by id (mutable).
+    pub fn find_canvas_preset_mut(&mut self, id: Uuid) -> Result<&mut CanvasPreset, String> {
+        self.canvas_presets
+            .iter_mut()
+            .find(|p| p.id == id)
+            .ok_or_else(|| format!("canvas preset {id} not found"))
+    }
+
+    /// Find a frame preset by id, or a "not found" error message suitable for IPC.
+    pub fn find_frame_preset(&self, id: Uuid) -> Result<&FramePreset, String> {
+        self.frame_presets
+            .iter()
+            .find(|p| p.id == id)
+            .ok_or_else(|| format!("frame preset {id} not found"))
+    }
+
+    /// Find a frame preset by id (mutable).
+    pub fn find_frame_preset_mut(&mut self, id: Uuid) -> Result<&mut FramePreset, String> {
+        self.frame_presets
+            .iter_mut()
+            .find(|p| p.id == id)
+            .ok_or_else(|| format!("frame preset {id} not found"))
+    }
+
+    /// Find a photo by id across all batches.
+    pub fn find_photo(&self, id: Uuid) -> Result<&Photo, String> {
+        self.batches
+            .iter()
+            .flat_map(|b| &b.photos)
+            .find(|p| p.id == id)
+            .ok_or_else(|| format!("photo {id} not found"))
+    }
+
+    /// Find a photo by id across all batches (mutable).
+    pub fn find_photo_mut(&mut self, id: Uuid) -> Result<&mut Photo, String> {
+        self.batches
+            .iter_mut()
+            .flat_map(|b| &mut b.photos)
+            .find(|p| p.id == id)
+            .ok_or_else(|| format!("photo {id} not found"))
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
