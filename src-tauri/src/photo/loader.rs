@@ -70,7 +70,6 @@ pub fn scan_photo(path: PathBuf) -> Result<Photo> {
     Ok(Photo {
         id: Uuid::new_v4(),
         path,
-        xmp_path,
         width,
         height,
         exif_orientation,

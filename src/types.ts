@@ -10,7 +10,6 @@ export type CropRect = {
 export type Photo = {
   id: string;
   path: string;
-  xmp_path: string | null;
   width: number;
   height: number;
   exif_orientation: Orientation | null;

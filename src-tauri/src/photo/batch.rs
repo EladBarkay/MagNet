@@ -202,7 +202,6 @@ mod tests {
         Photo {
             id: Uuid::new_v4(),
             path,
-            xmp_path: None,
             width: w,
             height: h,
             exif_orientation: None,

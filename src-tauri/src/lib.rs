@@ -148,7 +148,6 @@ pub fn run() {
             commands::gallery::clear_framed_preview_cache,
             commands::gallery::set_orientation_override,
             commands::gallery::clear_orientation_override,
-            commands::gallery::set_crop_override,
             commands::batch::export_batch,
             commands::batch::print_photos,
             commands::canvas_preset::create_canvas_preset,

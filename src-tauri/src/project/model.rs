@@ -127,7 +127,6 @@ impl PhotoBatch {
 pub struct Photo {
     pub id: Uuid,
     pub path: PathBuf,
-    pub xmp_path: Option<PathBuf>,
     pub width: u32,
     pub height: u32,
     pub exif_orientation: Option<Orientation>,
@@ -231,7 +230,6 @@ mod tests {
         Photo {
             id: Uuid::new_v4(),
             path: PathBuf::from("x.jpg"),
-            xmp_path: None,
             width,
             height,
             exif_orientation: None,

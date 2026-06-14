@@ -1,7 +1,7 @@
 use tauri::State;
 use uuid::Uuid;
 use crate::commands::IntoTauri;
-use crate::project::model::{CropRect, Orientation};
+use crate::project::model::Orientation;
 use crate::AppState;
 
 #[tauri::command]
@@ -71,21 +71,6 @@ pub async fn clear_orientation_override(
     let mut event = state.store.load(event_id).tauri()?;
     event.find_photo_mut(photo_id)?.orientation_override = None;
     state.store.save(&event).tauri()?;
-    state.invalidate_preview_for_photo(photo_id);
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn set_crop_override(
-    event_id: Uuid,
-    photo_id: Uuid,
-    crop: CropRect,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    let mut event = state.store.load(event_id).tauri()?;
-    event.find_photo_mut(photo_id)?.crop_override = Some(crop);
-    state.store.save(&event).tauri()?;
-    // Invalidate cached previews for this photo across all presets.
     state.invalidate_preview_for_photo(photo_id);
     Ok(())
 }
