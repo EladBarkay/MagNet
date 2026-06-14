@@ -12,13 +12,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 |---|---|
 | Desktop shell | Tauri v2 |
 | Frontend | React + TypeScript + Vite + Tailwind CSS |
-| State | Jotai (atomic) |
+| State | React `useState`/`useRef` in `App.tsx` (no Jotai, no external store) |
 | Backend | Rust (stable) |
 | Image processing | `image` crate (image-rs) — JPG, PNG, TIFF (RAW deferred to v2) |
 | EXIF/XMP | `kamadak-exif` + `quick-xml` |
 | Parallelism | `rayon` (CPU-bound batch), Tokio (async/IPC) |
 | File watching | `notify` crate |
-| Licensing crypto | `hmac` + `sha2` + `base32` |
+| Licensing | Server-issued tokens + 14-day offline grace, device-bound via `machine-uid` |
 
 ## Architecture
 
@@ -39,7 +39,7 @@ When opening a folder, the app matches it against `source_path` in existing `mag
 
 - **Event** — top-level: name, list of `PhotoBatch`es, active `FramePreset`, `CanvasPreset`s, output folder path
 - **PhotoBatch** — absolute `source_path` to photographer's folder, list of `Photo`s
-- **Photo** — path, EXIF orientation, user overrides (orientation, crop), `print_count`, `content_hash` (SHA-256 of photo + XMP bytes — resets `print_count` when it changes)
+- **Photo** — path, EXIF orientation, user overrides (orientation, crop), `print_count`, `export_count`, `content_hash` (SHA-256 of photo + XMP bytes — resets `print_count` when it changes)
 - **FramePreset** — absolute paths to landscape + portrait PNG (alpha), target ratio, crop method (center or rule-of-thirds)
 - **CanvasPreset** — pixel dimensions, photos-per-canvas, DPI, grid layout (e.g. 2400×1600, 2-up)
 
@@ -83,13 +83,12 @@ Dev profile compiles deps at opt-level 3 so `tauri dev` image work stays usable.
 - Photo/XMP change → recompute `content_hash`; if changed: reset `print_count`, invalidate thumbnail
 - Frame PNG change → invalidate framed previews using that frame, UI refreshes immediately
 
-### Licensing (v1 — Offline)
-
-Key format: `MAGNET-{BASE32(HMAC-SHA256(email|expiry|tier, SECRET))}`
+### Licensing
 
 - **Free tier**: output watermarked (composited on export/print canvas). No other limits.
-- **Pro tier**: no watermark.
-- Secret baked into binary at compile time via `MAGNET_LICENSE_SECRET` env var.
+- **Pro / Studio tier**: no watermark; tier is server-issued.
+- License cache stored in `{app_data}/license.json`, device-bound, 14-day grace period offline.
+- Dev bypass: `MAGNET_DEV_EMAIL` / `MAGNET_DEV_KEY` compile-time constants activate Pro instantly.
 
 ## Folder Structure
 
@@ -102,12 +101,12 @@ magnet/
 │   │   ├── main.rs            # thin entry → magnet_lib::run()
 │   │   ├── lib.rs             # AppState, Tauri builder, invoke_handler, license load
 │   │   ├── commands/          # Thin Tauri IPC handlers
-│   │   │   ├── project.rs     # open/create/save/delete event, batches, refresh_batch, sync_watches
+│   │   │   ├── project.rs     # open/create/save/delete event, batches, refresh_batch, sync_watches, open_in_explorer
 │   │   │   ├── gallery.rs     # list_photos, get_thumbnail, get_framed_preview, overrides (preview IPC lives here)
 │   │   │   ├── batch.rs       # export_batch, print_photos (watermark per tier)
 │   │   │   ├── canvas_preset.rs  # list/create/update/delete_canvas_preset
 │   │   │   ├── frame_preset.rs   # list/create/update/delete_frame_preset
-│   │   │   └── license.rs     # validate_license, get_license_info, clear_license
+│   │   │   └── license.rs     # activate_init, activate_confirm, activate_dev_license, get_license_info, clear_license
 │   │   ├── photo/             # Core image processing — no Tauri deps, unit-tested
 │   │   │   ├── loader.rs      # load_photo(), read_exif_orientation(), compute_content_hash() (content-based)
 │   │   │   ├── orientation.rs # detect_orientation() → Photo::effective_orientation()
@@ -118,37 +117,50 @@ magnet/
 │   │   ├── canvas/            # compositor.rs — tile + apply_watermark() (procedural, free tier)
 │   │   ├── project/           # model.rs + persistence.rs (serde_json, in-memory cache) [tests]
 │   │   ├── preview/           # thumbnail.rs (256px disk cache) + framed_preview.rs (1200px)
-│   │   ├── license/           # validator.rs — HMAC-SHA256 key validation [tests]
+│   │   ├── license/           # validator.rs (cache load/save, grace period), client.rs (HTTP OTP flow, revalidation), device.rs (machine-uid fingerprint)
 │   │   └── watcher/           # fs_watcher.rs — notify, emits `fs-changed` with changed path
 │   └── Cargo.toml
 ├── src/
 │   ├── components/            # flat (no nested folders)
 │   │   ├── Gallery.tsx        # react-window FixedSizeGrid virtual grid
-│   │   ├── PhotoCard.tsx      # thumbnail tile + print-count badge + print-qty stepper
-│   │   ├── PreviewPanel.tsx   # framed preview + metadata
-│   │   ├── ExportDialog.tsx   # export config + progress
-│   │   ├── PrintConfirmDialog.tsx  # frame+canvas preset pickers → print; "Sent X files"
+│   │   ├── PhotoCard.tsx      # thumbnail tile + qty stepper (bottom overlay, default 1)
+│   │   ├── PreviewPanel.tsx   # framed preview + orientation override + export/print counts
+│   │   ├── ProcessDialog.tsx  # export/print config: frame+canvas preset pickers, progress bar
 │   │   ├── FramePresetDialog.tsx   # create/edit frame preset
 │   │   ├── CanvasPresetForm.tsx    # create/edit canvas preset (used by manager)
 │   │   ├── CanvasPresetManager.tsx # list/edit/delete canvas presets
-│   │   └── SettingsDialog.tsx      # license key entry, tier/expiry
-│   └── hooks/                 # useThumbnail.ts, useFramedPreview.ts, useExportProgress.ts
-└── package.json              # state via React useState/useRef in App.tsx (no jotai, no src/store/)
+│   │   ├── SettingsDialog.tsx      # license activation (OTP flow + dev bypass), tier display
+│   │   ├── EmptyState.tsx          # empty gallery placeholder
+│   │   ├── icons.tsx               # SVG icon components
+│   │   └── ui.tsx                  # shared Modal and primitive UI components
+│   └── hooks/                 # useThumbnail.ts, useFramedPreview.ts, useFsWatcher.ts, useExportProgress.ts
+└── package.json
 ```
 
-### Print flow (current)
+### Print / Export flow (current)
 
-Per-photo print quantities are set on gallery cards (App `printQueue` state, separate from
-historical `print_count`). The toolbar **Print** button opens `PrintConfirmDialog` to pick a
-frame preset + canvas preset, then calls `print_photos`, which composes watermarked-if-Free
-canvases to a temp dir and returns the file count ("Sent X files for printing"). Actual printer
-submission is deferred — no files are sent to the OS printer yet.
+Per-photo quantities are set via the qty stepper at the **bottom of each gallery card** (default 1).
+All quantities live in `App.photoQueue: Record<string, number>` — a unified session-only state for
+both print and export. The toolbar **Print/Export** button opens `ProcessDialog` to pick a frame
+preset + canvas preset, then calls `print_photos` or `export_batch`. After completion, `print_count`
+/ `export_count` on each Photo is bumped optimistically and the queue is cleared. Actual printer
+submission is deferred — files go to a temp dir, OS printer dialog is not yet wired.
 
 ### Licensing (current)
 
-`license.json` is loaded into `AppState.license` at startup; `AppState::tier()` gates
-watermarking in `export_batch`/`print_photos`. Free tier composites a procedural diagonal-stripe
-watermark (no bundled asset/font). Settings UI activates/clears licenses.
+Two-step server activation: email + key → server sends OTP → `activate_confirm` → `license.json`
+written to `{app_data}/`. `license.json` is bound to the device via `device_id` (machine-uid);
+mismatched files are rejected. 14-day offline grace period; after expiry the app falls back to Free.
+
+Background revalidation runs at startup (retries every 60 s if unreachable). Emits `tier-changed`
+or `license-expired` Tauri events when state changes.
+
+**Dev bypass**: enter `MAGNET_DEV_EMAIL` + `MAGNET_DEV_KEY` in Settings → calls
+`activate_dev_license`, skips OTP, writes a synthetic Pro `LicenseInfo` with `token = "dev-token"`.
+Revalidation loop skips dev-token licenses entirely.
+
+`AppState::tier()` gates watermarking in `export_batch`/`print_photos`. Free tier composites a
+procedural diagonal-stripe watermark (no bundled asset/font).
 
 ### File watcher (current)
 
@@ -168,14 +180,3 @@ photos in `merge_photos`). Thumbnails bust automatically because `useThumbnail` 
 | 100 photos <10s | rayon, max 4 in-flight (~70MB each decoded) |
 | Memory ceiling ~500MB | Bounded concurrency in rayon pool |
 
-## Implementation Order
-
-1. `photo/` — batch engine (loader, orientation, crop, frame, export)
-2. `project/` — event persistence
-3. `preview/` — thumbnail cache + framed preview
-4. `canvas/` — canvas compositor
-5. `watcher/` — FS watcher + print_count reset
-6. Tauri commands + React gallery skeleton
-7. Frame setup UI + mid-event swap
-8. Canvas preset manager + export/print UI with quantity selector
-9. License validation + watermark compositing
