@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
 import { FramePreset, MagnetEvent } from "../types";
 import { Modal, Field, PathPicker } from "./ui";
+import { useAsyncForm } from "../hooks/useAsyncForm";
 
 type Props = {
   event: MagnetEvent;
@@ -21,8 +22,7 @@ export default function FramePresetDialog({ event, onCreated, onClose, editing }
   const [cropMethod, setCropMethod] = useState<"center" | "rule_of_thirds">(
     editing?.crop_method ?? "center"
   );
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
+  const { error, setError, loading: saving, run } = useAsyncForm();
 
   async function pickPng(setter: (p: string) => void) {
     const path = await openFilePicker({
@@ -39,8 +39,6 @@ export default function FramePresetDialog({ event, onCreated, onClose, editing }
     if (!portraitPath) { setError("Portrait frame PNG is required"); return; }
     if (ratioW <= 0 || ratioH <= 0) { setError("Ratio must be positive"); return; }
 
-    setSaving(true);
-    setError("");
     const input = {
       name: name.trim(),
       landscape_frame_path: landscapePath,
@@ -49,7 +47,7 @@ export default function FramePresetDialog({ event, onCreated, onClose, editing }
       target_ratio_h: ratioH,
       crop_method: cropMethod,
     };
-    try {
+    await run(async () => {
       if (editing) {
         const preset = await invoke<FramePreset>("update_frame_preset", {
           eventId: event.id, presetId: editing.id, preset: input,
@@ -71,10 +69,7 @@ export default function FramePresetDialog({ event, onCreated, onClose, editing }
         await invoke("save_event", { event: updatedEvent });
         onCreated(updatedEvent);
       }
-    } catch (e) {
-      setError(String(e));
-      setSaving(false);
-    }
+    });
   }
 
   return (

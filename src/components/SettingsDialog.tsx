@@ -7,6 +7,7 @@ import { establishFromSession } from "../lib/auth";
 import { tierLabel, tierColor } from "../lib/tiers";
 import { EVENTS } from "../constants";
 import { Modal } from "./ui";
+import { useAsyncForm } from "../hooks/useAsyncForm";
 
 type Props = {
   entitlement: Entitlement | null;
@@ -19,8 +20,7 @@ const BUY_URL = "https://magnet.app/pricing";
 export default function SettingsDialog({ entitlement, onClose, onEntitlementChange }: Props) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const { error, setError, loading: busy, run } = useAsyncForm();
 
   const tier = entitlement?.tier ?? "free";
   const isSignedIn = entitlement !== null && !!entitlement.email;
@@ -42,9 +42,7 @@ export default function SettingsDialog({ entitlement, onClose, onEntitlementChan
       setError("Enter your email and password");
       return;
     }
-    setError("");
-    setBusy(true);
-    try {
+    await run(async () => {
       const { data, error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
@@ -54,17 +52,11 @@ export default function SettingsDialog({ entitlement, onClose, onEntitlementChan
       onEntitlementChange(ent);
       setEmail("");
       setPassword("");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   async function signInOAuth(provider: "google" | "facebook") {
-    setError("");
-    setBusy(true);
-    try {
+    await run(async () => {
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
@@ -76,23 +68,14 @@ export default function SettingsDialog({ entitlement, onClose, onEntitlementChan
       const { openUrl } = await import("@tauri-apps/plugin-opener");
       await openUrl(data.url);
       // The deep-link handler (useAuthDeepLink) completes sign-in on callback.
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   async function signOut() {
-    setBusy(true);
-    try {
+    await run(async () => {
       await invoke("sign_out");
       onEntitlementChange(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   async function openBuyPage() {

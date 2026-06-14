@@ -1,6 +1,7 @@
 import { Entitlement, MagnetEvent, PhotoBatch } from "../types";
 import { PrintIcon, SettingsIcon, TrashIcon } from "./icons";
 import { tierLabel, tierColor } from "../lib/tiers";
+import { QtyButton } from "./ui";
 
 type Props = {
   event: MagnetEvent | null;
@@ -55,8 +56,8 @@ export default function Toolbar({
             {/* Gallery cell size */}
             <div className="flex items-center gap-1">
               <span className="text-xs text-neutral-500">Size:</span>
-              <QtyBtn label="−" onClick={() => onCellSizeChange(Math.max(100, cellSize - 20))} disabled={cellSize <= 100} />
-              <QtyBtn label="+" onClick={() => onCellSizeChange(Math.min(280, cellSize + 20))} disabled={cellSize >= 280} />
+              <QtyButton size="sm" label="−" onClick={() => onCellSizeChange(Math.max(100, cellSize - 20))} disabled={cellSize <= 100} />
+              <QtyButton size="sm" label="+" onClick={() => onCellSizeChange(Math.min(280, cellSize + 20))} disabled={cellSize >= 280} />
             </div>
 
             {/* Batch-wide print qty: set all photos in the current batch at once */}
@@ -64,11 +65,11 @@ export default function Toolbar({
               <div className="flex items-center gap-1.5">
                 <span className="text-xs text-neutral-500">All:</span>
                 <div className="flex items-center gap-0.5 rounded-full bg-neutral-700 px-0.5 py-0.5">
-                  <QtyBtn label="−" onClick={() => changeAllQty(-1)} disabled={allQty <= 0} />
+                  <QtyButton size="sm" label="−" onClick={() => changeAllQty(-1)} disabled={allQty <= 0} />
                   <span className="min-w-[18px] text-center text-xs font-semibold text-neutral-200 tabular-nums">
                     {allQty}
                   </span>
-                  <QtyBtn label="+" onClick={() => changeAllQty(+1)} />
+                  <QtyButton size="sm" label="+" onClick={() => changeAllQty(+1)} />
                 </div>
               </div>
             )}
@@ -107,17 +108,5 @@ export default function Toolbar({
         </span>
       </button>
     </header>
-  );
-}
-
-function QtyBtn({ label, onClick, disabled }: { label: string; onClick: () => void; disabled?: boolean }) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className="w-5 h-5 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-30 text-neutral-200 text-sm leading-none font-medium"
-    >
-      {label}
-    </button>
   );
 }

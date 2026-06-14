@@ -2,6 +2,7 @@ import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { CanvasPreset, MagnetEvent } from "../types";
 import { Field, NumInput } from "./ui";
+import { useAsyncForm } from "../hooks/useAsyncForm";
 
 type Props = {
   event: MagnetEvent;
@@ -27,8 +28,7 @@ export default function CanvasPresetForm({ event, onCreated, onCancel, editing }
   const [rows, setRows] = useState(editing?.rows ?? 1);
   const [dpi, setDpi] = useState(editing?.dpi ?? 300);
   const [margin, setMargin] = useState(editing?.margin_px ?? 0);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
+  const { error, setError, loading: saving, run } = useAsyncForm();
 
   function applyTemplate(idx: number) {
     const t = PRESETS[idx];
@@ -40,11 +40,9 @@ export default function CanvasPresetForm({ event, onCreated, onCancel, editing }
   async function save() {
     if (!name.trim()) { setError("Name is required"); return; }
     if (cols * rows < n) { setError(`Grid ${cols}×${rows} has ${cols*rows} slots but photos/canvas is ${n}`); return; }
-    setSaving(true);
-    setError("");
     const input = { name: name.trim(), canvas_width_px: w, canvas_height_px: h,
       photos_per_canvas: n, dpi, margin_px: margin, cols, rows };
-    try {
+    await run(async () => {
       if (editing) {
         const preset = await invoke<CanvasPreset>("update_canvas_preset", {
           eventId: event.id, presetId: editing.id, preset: input,
@@ -59,10 +57,7 @@ export default function CanvasPresetForm({ event, onCreated, onCancel, editing }
         });
         onCreated(preset, { ...event, canvas_presets: [...event.canvas_presets, preset] });
       }
-    } catch (e) {
-      setError(String(e));
-      setSaving(false);
-    }
+    });
   }
 
   return (

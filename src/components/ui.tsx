@@ -88,6 +88,35 @@ export function NumInput({
   );
 }
 
+/** Round +/− stepper button. `sm` is the compact toolbar variant; the default
+ *  is the larger overlay variant used on gallery cards. Stops click propagation
+ *  so it can sit on top of a clickable parent (e.g. a photo card). */
+export function QtyButton({
+  label,
+  onClick,
+  disabled,
+  size = "md",
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  size?: "sm" | "md";
+}) {
+  const variant =
+    size === "sm"
+      ? "w-5 h-5 bg-white/10 hover:bg-white/20 text-neutral-200 text-sm"
+      : "w-7 h-7 bg-white/20 hover:bg-white/40 text-white text-base";
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      disabled={disabled}
+      className={`flex items-center justify-center rounded-full disabled:opacity-30 leading-none font-medium ${variant}`}
+    >
+      {label}
+    </button>
+  );
+}
+
 /** File-path display + pick button (shows the basename). */
 export function PathPicker({
   path,

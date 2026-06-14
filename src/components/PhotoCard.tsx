@@ -2,6 +2,7 @@ import { memo } from "react";
 import { useThumbnail } from "../hooks/useThumbnail";
 import { Photo } from "../types";
 import { basename } from "../lib/paths";
+import { QtyButton } from "./ui";
 
 type Props = {
   photo: Photo;
@@ -60,28 +61,14 @@ function PhotoCard({ photo, selected, onClick, cellSize, qty, onQtyDelta }: Prop
           <span />
         )}
         <div className="flex items-center gap-1">
-          <QtyBtn label="−" onClick={() => onQtyDelta(-1)} disabled={qty <= 0} />
+          <QtyButton label="−" onClick={() => onQtyDelta(-1)} disabled={qty <= 0} />
           <span className="min-w-[18px] text-center text-sm font-semibold text-white tabular-nums">
             {qty}
           </span>
-          <QtyBtn label="+" onClick={() => onQtyDelta(+1)} />
+          <QtyButton label="+" onClick={() => onQtyDelta(+1)} />
         </div>
       </div>
     </div>
-  );
-}
-
-function QtyBtn({
-  label, onClick, disabled,
-}: { label: string; onClick: () => void; disabled?: boolean }) {
-  return (
-    <button
-      onClick={(e) => { e.stopPropagation(); onClick(); }}
-      disabled={disabled}
-      className="w-7 h-7 flex items-center justify-center rounded-full bg-white/20 hover:bg-white/40 disabled:opacity-30 text-white text-base leading-none font-medium"
-    >
-      {label}
-    </button>
   );
 }
 
