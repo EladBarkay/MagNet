@@ -60,7 +60,7 @@ pub async fn update_frame_preset(
     preset.apply(existing);
     let updated = existing.clone();
     state.store.save(&event).tauri()?;
-    state.preview_cache.lock().unwrap().retain(|(_, fpid), _| *fpid != preset_id);
+    state.invalidate_preview_for_preset(preset_id);
     Ok(updated)
 }
 
@@ -76,6 +76,6 @@ pub async fn delete_frame_preset(
         event.active_frame_preset_id = event.frame_presets.first().map(|p| p.id);
     }
     state.store.save(&event).tauri()?;
-    state.preview_cache.lock().unwrap().retain(|(_, fpid), _| *fpid != preset_id);
+    state.invalidate_preview_for_preset(preset_id);
     Ok(())
 }

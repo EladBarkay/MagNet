@@ -40,10 +40,9 @@ pub async fn clear_framed_preview_cache(
     preset_id: Option<Uuid>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let mut cache = state.preview_cache.lock().unwrap();
     match preset_id {
-        Some(pid) => cache.retain(|(_, fpid), _| *fpid != pid),
-        None => cache.clear(),
+        Some(pid) => state.invalidate_preview_for_preset(pid),
+        None => state.preview_cache.lock().unwrap().clear(),
     }
     Ok(())
 }
@@ -59,7 +58,7 @@ pub async fn set_orientation_override(
     event.find_photo_mut(photo_id)?.orientation_override = Some(orientation);
     state.store.save(&event).tauri()?;
     // Invalidate cached previews for this photo across all presets.
-    state.preview_cache.lock().unwrap().retain(|(pid, _), _| *pid != photo_id);
+    state.invalidate_preview_for_photo(photo_id);
     Ok(())
 }
 
@@ -72,7 +71,7 @@ pub async fn clear_orientation_override(
     let mut event = state.store.load(event_id).tauri()?;
     event.find_photo_mut(photo_id)?.orientation_override = None;
     state.store.save(&event).tauri()?;
-    state.preview_cache.lock().unwrap().retain(|(pid, _), _| *pid != photo_id);
+    state.invalidate_preview_for_photo(photo_id);
     Ok(())
 }
 
@@ -87,6 +86,6 @@ pub async fn set_crop_override(
     event.find_photo_mut(photo_id)?.crop_override = Some(crop);
     state.store.save(&event).tauri()?;
     // Invalidate cached previews for this photo across all presets.
-    state.preview_cache.lock().unwrap().retain(|(pid, _), _| *pid != photo_id);
+    state.invalidate_preview_for_photo(photo_id);
     Ok(())
 }

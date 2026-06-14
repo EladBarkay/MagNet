@@ -48,6 +48,16 @@ impl AppState {
     pub fn watermark(&self) -> bool {
         matches!(self.tier(), Tier::Free)
     }
+
+    /// Drop cached framed previews that use the given frame preset.
+    pub fn invalidate_preview_for_preset(&self, preset_id: Uuid) {
+        self.preview_cache.lock().unwrap().retain(|(_, fpid), _| *fpid != preset_id);
+    }
+
+    /// Drop cached framed previews for the given photo across all presets.
+    pub fn invalidate_preview_for_photo(&self, photo_id: Uuid) {
+        self.preview_cache.lock().unwrap().retain(|(pid, _), _| *pid != photo_id);
+    }
 }
 
 /// Build the synthetic auth state for the compile-time dev bypass, if configured.
