@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { FramePreset, MagnetEvent, PhotoBatch } from "../types";
 import { batchDisplayPath, parentDir } from "../lib/paths";
@@ -12,6 +13,9 @@ type Props = {
   onSelectBatch: (b: PhotoBatch) => void;
   onDeleteBatch: (b: PhotoBatch) => void;
   onReorderBatch: (targetId: string) => void;
+  draggedFrameId: string | null;
+  setDraggedFrameId: (id: string | null) => void;
+  onReorderFrame: (targetId: string) => void;
   onAddFrame: () => void;
   onEditFrame: (p: FramePreset) => void;
   onDeleteFrame: (p: FramePreset) => void;
@@ -21,8 +25,12 @@ type Props = {
 export default function Sidebar({
   event, activeBatch, draggedBatchId, setDraggedBatchId,
   onAddBatch, onSelectBatch, onDeleteBatch, onReorderBatch,
+  draggedFrameId, setDraggedFrameId, onReorderFrame,
   onAddFrame, onEditFrame, onDeleteFrame, onManageCanvas,
 }: Props) {
+  const [dragOverBatchId, setDragOverBatchId] = useState<string | null>(null);
+  const [dragOverFrameId, setDragOverFrameId] = useState<string | null>(null);
+
   return (
     <aside className="w-52 shrink-0 flex flex-col bg-neutral-850 border-r border-neutral-700 overflow-y-auto">
       <Section label="Batches" action={<AddButton onClick={onAddBatch} />}>
@@ -36,15 +44,21 @@ export default function Sidebar({
         ) : (
           event.batches.map((b) => {
             const displayPath = batchDisplayPath(b.source_path, event.root_path ? parentDir(event.root_path) : null);
+            const isOver = dragOverBatchId === b.id && draggedBatchId !== b.id;
             return (
               <div
                 key={b.id}
                 draggable
-                onDragStart={() => setDraggedBatchId(b.id)}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => { e.preventDefault(); onReorderBatch(b.id); }}
-                onDragEnd={() => setDraggedBatchId(null)}
-                className={`group relative ${draggedBatchId === b.id ? "opacity-40" : ""}`}
+                onDragStart={(e) => { e.dataTransfer.setData("text/plain", b.id); setDraggedBatchId(b.id); }}
+                onDragOver={(e) => { e.preventDefault(); setDragOverBatchId(b.id); }}
+                onDragLeave={() => setDragOverBatchId(null)}
+                onDrop={(e) => { e.preventDefault(); setDragOverBatchId(null); onReorderBatch(b.id); }}
+                onDragEnd={() => { setDraggedBatchId(null); setDragOverBatchId(null); }}
+                className={[
+                  "group relative cursor-grab",
+                  draggedBatchId === b.id ? "opacity-40" : "",
+                  isOver ? "border-t-2 border-blue-500" : "",
+                ].join(" ")}
               >
                 <button
                   onClick={() => onSelectBatch(b)}
@@ -56,7 +70,7 @@ export default function Sidebar({
                     }
                   }}
                   className={[
-                    "w-full text-left px-3 py-1.5 pr-8 text-sm transition-colors",
+                    "w-full text-left px-3 py-1.5 pr-8 text-sm transition-colors cursor-grab",
                     b.id === activeBatch?.id
                       ? "bg-blue-600/20 text-blue-300"
                       : "text-neutral-300 hover:bg-neutral-700/60",
@@ -90,30 +104,48 @@ export default function Sidebar({
             </button>
           </p>
         ) : (
-          event.frame_presets.map((p) => (
-            <div key={p.id} className="group relative">
-              <SidebarItem
-                label={p.name}
-                sublabel={`${p.target_ratio_w}:${p.target_ratio_h} · ${p.crop_method === "center" ? "center" : "rule of thirds"}`}
-              />
-              <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button
-                  onClick={(e) => { e.stopPropagation(); onEditFrame(p); }}
-                  title="Edit frame preset"
-                  className="p-1 text-neutral-500 hover:text-blue-400"
-                >
-                  <EditIcon />
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); onDeleteFrame(p); }}
-                  title="Delete frame preset"
-                  className="p-1 text-neutral-500 hover:text-red-400"
-                >
-                  <TrashIcon className="w-3 h-3" />
-                </button>
+          event.frame_presets.map((p) => {
+            const isOver = dragOverFrameId === p.id && draggedFrameId !== p.id;
+            return (
+              <div
+                key={p.id}
+                draggable
+                onDragStart={(e) => { e.dataTransfer.setData("text/plain", p.id); setDraggedFrameId(p.id); }}
+                onDragOver={(e) => { e.preventDefault(); setDragOverFrameId(p.id); }}
+                onDragLeave={() => setDragOverFrameId(null)}
+                onDrop={(e) => { e.preventDefault(); setDragOverFrameId(null); onReorderFrame(p.id); }}
+                onDragEnd={() => { setDraggedFrameId(null); setDragOverFrameId(null); }}
+                className={[
+                  "group relative cursor-grab",
+                  draggedFrameId === p.id ? "opacity-40" : "",
+                  isOver ? "border-t-2 border-blue-500" : "",
+                ].join(" ")}
+              >
+                <div className="w-full px-3 py-1.5 pr-16 text-sm text-neutral-300">
+                  <span className="block truncate">{p.name}</span>
+                  <span className="block text-[10px] text-neutral-500">
+                    {`${p.target_ratio_w}:${p.target_ratio_h} · ${p.crop_method === "center" ? "center" : "rule of thirds"}`}
+                  </span>
+                </div>
+                <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onEditFrame(p); }}
+                    title="Edit frame preset"
+                    className="p-1 text-neutral-500 hover:text-blue-400"
+                  >
+                    <EditIcon />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onDeleteFrame(p); }}
+                    title="Delete frame preset"
+                    className="p-1 text-neutral-500 hover:text-red-400"
+                  >
+                    <TrashIcon className="w-3 h-3" />
+                  </button>
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </Section>
 

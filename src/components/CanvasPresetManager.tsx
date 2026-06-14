@@ -17,6 +17,8 @@ export default function CanvasPresetManager({ event, onClose, onEventUpdate }: P
     event.canvas_presets.length === 0 ? { kind: "new" } : { kind: "list" }
   );
   const [error, setError] = useState("");
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
 
   async function remove(preset: CanvasPreset) {
     setError("");
@@ -29,6 +31,19 @@ export default function CanvasPresetManager({ event, onClose, onEventUpdate }: P
     } catch (e) {
       setError(String(e));
     }
+  }
+
+  function reorder(targetId: string) {
+    if (!draggedId || draggedId === targetId) return;
+    const presets = [...event.canvas_presets];
+    const fromIdx = presets.findIndex((p) => p.id === draggedId);
+    const toIdx = presets.findIndex((p) => p.id === targetId);
+    if (fromIdx < 0 || toIdx < 0) return;
+    const [moved] = presets.splice(fromIdx, 1);
+    presets.splice(toIdx, 0, moved);
+    const updated = { ...event, canvas_presets: presets };
+    onEventUpdate(updated);
+    invoke("save_event", { event: updated }).catch(() => {});
   }
 
   return (
@@ -53,34 +68,47 @@ export default function CanvasPresetManager({ event, onClose, onEventUpdate }: P
             {event.canvas_presets.length === 0 ? (
               <p className="text-xs text-neutral-500">No presets yet.</p>
             ) : (
-              event.canvas_presets.map((p) => (
-                <div
-                  key={p.id}
-                  className="flex items-center justify-between rounded bg-neutral-800 px-3 py-2"
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm text-neutral-200 truncate">{p.name}</p>
-                    <p className="text-[10px] text-neutral-500">
-                      {p.canvas_width_px}×{p.canvas_height_px} · {p.photos_per_canvas}-up ·{" "}
-                      {p.cols}×{p.rows} grid · margin {p.margin_px}px
-                    </p>
+              event.canvas_presets.map((p) => {
+                const isOver = dragOverId === p.id && draggedId !== p.id;
+                return (
+                  <div
+                    key={p.id}
+                    draggable
+                    onDragStart={(e) => { e.dataTransfer.setData("text/plain", p.id); setDraggedId(p.id); }}
+                    onDragOver={(e) => { e.preventDefault(); setDragOverId(p.id); }}
+                    onDragLeave={() => setDragOverId(null)}
+                    onDrop={(e) => { e.preventDefault(); setDragOverId(null); reorder(p.id); }}
+                    onDragEnd={() => { setDraggedId(null); setDragOverId(null); }}
+                    className={[
+                      "flex items-center justify-between rounded bg-neutral-800 px-3 py-2 cursor-grab transition-opacity",
+                      draggedId === p.id ? "opacity-40" : "",
+                      isOver ? "ring-2 ring-blue-500" : "",
+                    ].join(" ")}
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm text-neutral-200 truncate">{p.name}</p>
+                      <p className="text-[10px] text-neutral-500">
+                        {p.canvas_width_px}×{p.canvas_height_px} · {p.photos_per_canvas}-up ·{" "}
+                        {p.cols}×{p.rows} grid · margin {p.margin_px}px
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0 ml-2">
+                      <button
+                        onClick={() => setMode({ kind: "edit", preset: p })}
+                        className="text-xs text-blue-400 hover:text-blue-300"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => remove(p)}
+                        className="text-xs text-red-400 hover:text-red-300"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0 ml-2">
-                    <button
-                      onClick={() => setMode({ kind: "edit", preset: p })}
-                      className="text-xs text-blue-400 hover:text-blue-300"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => remove(p)}
-                      className="text-xs text-red-400 hover:text-red-300"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
             <div className="flex justify-end pt-2">
               <button

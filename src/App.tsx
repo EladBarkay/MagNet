@@ -22,6 +22,7 @@ export default function App() {
   const [modal, setModal] = useState<Modal>(null);
   const [status, setStatus] = useState("");
   const [draggedBatchId, setDraggedBatchId] = useState<string | null>(null);
+  const [draggedFrameId, setDraggedFrameId] = useState<string | null>(null);
   const [license, setLicense] = useState<LicenseInfo | null>(null);
   const [frameNonce, setFrameNonce] = useState(0);
   const [editingFrame, setEditingFrame] = useState<FramePreset | null>(null);
@@ -127,6 +128,19 @@ export default function App() {
     const [moved] = batches.splice(fromIdx, 1);
     batches.splice(toIdx, 0, moved);
     const updated = { ...event, batches };
+    setEvent(updated);
+    invoke("save_event", { event: updated }).catch(() => {});
+  }
+
+  function reorderFramePreset(targetId: string) {
+    if (!event || !draggedFrameId || draggedFrameId === targetId) return;
+    const presets = [...event.frame_presets];
+    const fromIdx = presets.findIndex((p) => p.id === draggedFrameId);
+    const toIdx = presets.findIndex((p) => p.id === targetId);
+    if (fromIdx < 0 || toIdx < 0) return;
+    const [moved] = presets.splice(fromIdx, 1);
+    presets.splice(toIdx, 0, moved);
+    const updated = { ...event, frame_presets: presets };
     setEvent(updated);
     invoke("save_event", { event: updated }).catch(() => {});
   }
@@ -320,6 +334,9 @@ export default function App() {
             onSelectBatch={(b) => { setActiveBatch(b); setSelected(null); setPhotoQueue(initQueueForBatch(b)); }}
             onDeleteBatch={deleteBatch}
             onReorderBatch={reorderBatch}
+            draggedFrameId={draggedFrameId}
+            setDraggedFrameId={setDraggedFrameId}
+            onReorderFrame={reorderFramePreset}
             onAddFrame={() => setModal("addFrame")}
             onEditFrame={setEditingFrame}
             onDeleteFrame={deleteFramePreset}
