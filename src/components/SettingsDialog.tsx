@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { Entitlement } from "../types";
 import { supabase } from "../lib/supabase";
 import { establishFromSession } from "../lib/auth";
+import { tierLabel, tierColor } from "../lib/tiers";
 import { Modal } from "./ui";
 
 type Props = {
@@ -13,18 +14,6 @@ type Props = {
 };
 
 const BUY_URL = "https://magnet.app/pricing";
-
-const TIER_LABELS: Record<string, string> = {
-  free: "Free",
-  pro: "Pro",
-  studio: "Studio",
-};
-
-const TIER_COLORS: Record<string, string> = {
-  free: "bg-neutral-700 text-neutral-300",
-  pro: "bg-green-700/80 text-white",
-  studio: "bg-purple-700/80 text-white",
-};
 
 export default function SettingsDialog({ entitlement, onClose, onEntitlementChange }: Props) {
   const [email, setEmail] = useState("");
@@ -123,8 +112,8 @@ export default function SettingsDialog({ entitlement, onClose, onEntitlementChan
             <span className="text-xs font-medium uppercase tracking-wide text-neutral-400">
               License
             </span>
-            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${TIER_COLORS[tier] ?? TIER_COLORS.free}`}>
-              {TIER_LABELS[tier] ?? tier}
+            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${tierColor(tier)}`}>
+              {tierLabel(tier)}
             </span>
           </div>
           {isSignedIn ? (

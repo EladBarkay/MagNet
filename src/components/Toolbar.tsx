@@ -1,5 +1,6 @@
 import { Entitlement, MagnetEvent, PhotoBatch } from "../types";
 import { PrintIcon, SettingsIcon, TrashIcon } from "./icons";
+import { tierLabel, tierColor } from "../lib/tiers";
 
 type Props = {
   event: MagnetEvent | null;
@@ -23,12 +24,6 @@ export default function Toolbar({
   onOpenEvent, onDeleteEvent, onProcess, onSettings, onSetAllQty, onCellSizeChange,
 }: Props) {
   const tier = entitlement?.tier ?? "free";
-  const tierLabel = tier === "studio" ? "Studio" : tier === "pro" ? "Pro" : "Free";
-  const tierColor = tier === "studio"
-    ? "bg-purple-700/80 text-white"
-    : tier === "pro"
-    ? "bg-green-700/80 text-white"
-    : "bg-neutral-700 text-neutral-300";
 
   function changeAllQty(delta: number) {
     onSetAllQty(Math.max(0, allQty + delta));
@@ -107,8 +102,8 @@ export default function Toolbar({
         ].join(" ")}
       >
         <SettingsIcon />
-        <span className={`font-semibold px-1.5 py-0.5 rounded-full text-[10px] ${tierColor}`}>
-          {tierLabel}
+        <span className={`font-semibold px-1.5 py-0.5 rounded-full text-[10px] ${tierColor(tier)}`}>
+          {tierLabel(tier)}
         </span>
       </button>
     </header>
