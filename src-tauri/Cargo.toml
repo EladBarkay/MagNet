@@ -1,0 +1,74 @@
+[package]
+name = "magnet"
+version = "0.1.0"
+description = "MagNet — batch photo framing for event photographers"
+authors = []
+edition = "2021"
+
+[lib]
+name = "magnet_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-shell = "2"
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# Image processing
+image = { version = "0.25", features = ["jpeg", "png", "tiff"] }
+# SIMD crop+resize for the export hot path (pure Rust)
+fast_image_resize = "5"
+
+# EXIF / XMP
+kamadak-exif = "0.5"
+quick-xml = { version = "0.36", features = ["serialize"] }
+
+# Async / parallelism
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+rayon = "1"
+
+# License HTTP client
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+
+# Hardware-stable device fingerprint
+machine-uid = "0.5"
+
+# File watching
+notify = { version = "7", features = ["serde"] }
+
+# Hashing (used by license token verification)
+sha2 = "0.10"
+hmac = "0.12"
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# Logging
+log = "0.4"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+strip = true
+
+# Keep `tauri dev` usable for image work: our own code compiles fast at O1,
+# while dependencies (image, zune-jpeg, png, rayon…) get full optimization.
+# Without this, JPEG decode/resize in debug is 10-50× slower than release.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3

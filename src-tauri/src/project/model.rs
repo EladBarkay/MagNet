@@ -1,0 +1,234 @@
+use std::path::PathBuf;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Event {
+    pub id: Uuid,
+    pub name: String,
+    /// The folder used to open/identify this event session (not necessarily a batch folder).
+    #[serde(default)]
+    pub root_path: Option<PathBuf>,
+    pub batches: Vec<PhotoBatch>,
+    pub frame_presets: Vec<FramePreset>,
+    pub canvas_presets: Vec<CanvasPreset>,
+    pub output_folder: Option<PathBuf>,
+    pub active_frame_preset_id: Option<Uuid>,
+    /// Tracks whether canvas presets have been migrated from margin_px: 40 → 0
+    #[serde(default)]
+    pub migrated_margin: bool,
+}
+
+impl Event {
+    pub fn new(name: String) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            name,
+            root_path: None,
+            batches: Vec::new(),
+            frame_presets: Vec::new(),
+            canvas_presets: Vec::new(),
+            output_folder: None,
+            active_frame_preset_id: None,
+            migrated_margin: false,
+        }
+    }
+
+    /// Auto-migrate canvas presets from margin_px: 40 → 0 if not already migrated.
+    /// Returns whether any presets were modified.
+    pub fn migrate_canvas_margins(&mut self) -> bool {
+        if self.migrated_margin {
+            return false;
+        }
+        let mut modified = false;
+        for preset in &mut self.canvas_presets {
+            if preset.margin_px == 40 {
+                preset.margin_px = 0;
+                modified = true;
+            }
+        }
+        if modified {
+            self.migrated_margin = true;
+        }
+        modified
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PhotoBatch {
+    pub id: Uuid,
+    pub name: String,
+    pub source_path: PathBuf,
+    pub photos: Vec<Photo>,
+}
+
+impl PhotoBatch {
+    pub fn new(name: String, source_path: PathBuf) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            name,
+            source_path,
+            photos: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Photo {
+    pub id: Uuid,
+    pub path: PathBuf,
+    pub xmp_path: Option<PathBuf>,
+    pub width: u32,
+    pub height: u32,
+    pub exif_orientation: Option<Orientation>,
+    pub orientation_override: Option<Orientation>,
+    pub crop_override: Option<CropRect>,
+    pub print_count: u32,
+    pub export_count: u32,
+    pub content_hash: String,
+}
+
+impl Photo {
+    pub fn effective_orientation(&self) -> Orientation {
+        self.orientation_override
+            .unwrap_or(
+                if self.width >= self.height {
+                    Orientation::Landscape
+                } else {
+                    Orientation::Portrait
+                }
+            )
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Orientation {
+    Landscape,
+    Portrait,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct CropRect {
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FramePreset {
+    pub id: Uuid,
+    pub name: String,
+    pub landscape_frame_path: PathBuf,
+    pub portrait_frame_path: PathBuf,
+    /// Target ratio as (width, height), e.g. (4.0, 3.0)
+    pub target_ratio_w: f32,
+    pub target_ratio_h: f32,
+    pub crop_method: CropMethod,
+}
+
+impl FramePreset {
+    pub fn frame_path(&self, orientation: Orientation) -> &PathBuf {
+        match orientation {
+            Orientation::Landscape => &self.landscape_frame_path,
+            Orientation::Portrait => &self.portrait_frame_path,
+        }
+    }
+
+    pub fn target_ratio(&self) -> f32 {
+        self.target_ratio_w / self.target_ratio_h
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CropMethod {
+    Center,
+    RuleOfThirds,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CanvasPreset {
+    pub id: Uuid,
+    pub name: String,
+    pub canvas_width_px: u32,
+    pub canvas_height_px: u32,
+    pub photos_per_canvas: u8,
+    pub dpi: u32,
+    pub margin_px: u32,
+    pub cols: u8,
+    pub rows: u8,
+}
+
+impl CanvasPreset {
+    pub fn slot_width(&self) -> u32 {
+        let total_margin = self.margin_px * (self.cols as u32 + 1);
+        (self.canvas_width_px - total_margin) / self.cols as u32
+    }
+
+    pub fn slot_height(&self) -> u32 {
+        let total_margin = self.margin_px * (self.rows as u32 + 1);
+        (self.canvas_height_px - total_margin) / self.rows as u32
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn photo(width: u32, height: u32) -> Photo {
+        Photo {
+            id: Uuid::new_v4(),
+            path: PathBuf::from("x.jpg"),
+            xmp_path: None,
+            width,
+            height,
+            exif_orientation: None,
+            orientation_override: None,
+            crop_override: None,
+            print_count: 0,
+            export_count: 0,
+            content_hash: String::new(),
+        }
+    }
+
+    #[test]
+    fn orientation_from_pixels_landscape() {
+        assert_eq!(photo(200, 100).effective_orientation(), Orientation::Landscape);
+    }
+
+    #[test]
+    fn orientation_from_pixels_portrait() {
+        assert_eq!(photo(100, 200).effective_orientation(), Orientation::Portrait);
+    }
+
+    #[test]
+    fn square_is_landscape() {
+        assert_eq!(photo(100, 100).effective_orientation(), Orientation::Landscape);
+    }
+
+    #[test]
+    fn override_wins_over_pixels() {
+        let mut p = photo(200, 100); // would be Landscape
+        p.orientation_override = Some(Orientation::Portrait);
+        assert_eq!(p.effective_orientation(), Orientation::Portrait);
+    }
+
+    #[test]
+    fn slot_dimensions_account_for_margins() {
+        let preset = CanvasPreset {
+            id: Uuid::new_v4(),
+            name: "2-up".into(),
+            canvas_width_px: 2400,
+            canvas_height_px: 1600,
+            photos_per_canvas: 2,
+            dpi: 300,
+            margin_px: 0,
+            cols: 2,
+            rows: 1,
+        };
+        assert_eq!(preset.slot_width(), 1200);
+        assert_eq!(preset.slot_height(), 1600);
+    }
+}

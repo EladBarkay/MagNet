@@ -1,0 +1,12 @@
+# Use rust-lld (lld bundled with the Rust toolchain) instead of MSVC link.exe.
+# One-time setup: `rustup component add llvm-tools`
+#
+# /DEBUG:FASTLINK produces a partial PDB (references object files instead of copying)
+# which further reduces link time for dev/debug builds.
+[target.x86_64-pc-windows-msvc]
+linker = "rust-lld"
+rustflags = ["-Clink-arg=/DEBUG:FASTLINK"]
+
+[target.aarch64-pc-windows-msvc]
+linker = "rust-lld"
+rustflags = ["-Clink-arg=/DEBUG:FASTLINK"]
