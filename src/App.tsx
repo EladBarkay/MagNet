@@ -55,6 +55,13 @@ export default function App() {
     onFrameChanged: () => setFrameNonce((n) => n + 1),
   });
 
+  function initQueueForBatch(batch: PhotoBatch | null | undefined): Record<string, number> {
+    if (!batch) return {};
+    const q: Record<string, number> = {};
+    for (const p of batch.photos) q[p.id] = 1;
+    return q;
+  }
+
   async function openEvent() {
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");
@@ -65,7 +72,7 @@ export default function App() {
       setEvent(evt);
       setActiveBatch(evt.batches[0] ?? null);
       setSelected(null);
-      setPhotoQueue({});
+      setPhotoQueue(initQueueForBatch(evt.batches[0]));
       invoke("sync_watches", { eventId: evt.id }).catch(() => {});
       setStatus("");
     } catch (e) {
@@ -162,7 +169,7 @@ export default function App() {
       const updated = await invoke<MagnetEvent>("add_batch", { eventId: event.id, folder });
       updateEvent(updated);
       const newBatch = updated.batches[updated.batches.length - 1];
-      if (newBatch) setActiveBatch(newBatch);
+      if (newBatch) { setActiveBatch(newBatch); setPhotoQueue(initQueueForBatch(newBatch)); }
       setSelected(null);
       setStatus("");
     } catch (e) {
@@ -310,7 +317,7 @@ export default function App() {
             draggedBatchId={draggedBatchId}
             setDraggedBatchId={setDraggedBatchId}
             onAddBatch={addBatch}
-            onSelectBatch={(b) => { setActiveBatch(b); setSelected(null); setPhotoQueue({}); }}
+            onSelectBatch={(b) => { setActiveBatch(b); setSelected(null); setPhotoQueue(initQueueForBatch(b)); }}
             onDeleteBatch={deleteBatch}
             onReorderBatch={reorderBatch}
             onAddFrame={() => setModal("addFrame")}

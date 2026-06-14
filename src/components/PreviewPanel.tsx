@@ -108,7 +108,19 @@ export default function PreviewPanel({ event, photo, onClose, frameNonce, onOrie
           </div>
         )}
         <div className="flex items-center justify-between">
-          <span>Print count</span>
+          <span>Exported</span>
+          <span
+            className={
+              photo.export_count > 0
+                ? "font-semibold text-blue-400"
+                : "text-neutral-600"
+            }
+          >
+            {photo.export_count === 0 ? "Not exported" : `⬇${photo.export_count}`}
+          </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span>Printed</span>
           <span
             className={
               photo.print_count > 0
