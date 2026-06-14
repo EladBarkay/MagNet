@@ -1,6 +1,7 @@
 use serde::Deserialize;
 use tauri::State;
 use uuid::Uuid;
+use crate::commands::IntoTauri;
 use crate::project::model::CanvasPreset;
 use crate::AppState;
 
@@ -43,10 +44,10 @@ pub async fn create_canvas_preset(
     preset: CanvasPresetInput,
     state: State<'_, AppState>,
 ) -> Result<CanvasPreset, String> {
-    let mut event = state.store.load(event_id).map_err(|e| e.to_string())?;
+    let mut event = state.store.load(event_id).tauri()?;
     let preset = preset.into_preset(Uuid::new_v4());
     event.canvas_presets.push(preset.clone());
-    state.store.save(&event).map_err(|e| e.to_string())?;
+    state.store.save(&event).tauri()?;
     Ok(preset)
 }
 
@@ -57,11 +58,11 @@ pub async fn update_canvas_preset(
     preset: CanvasPresetInput,
     state: State<'_, AppState>,
 ) -> Result<CanvasPreset, String> {
-    let mut event = state.store.load(event_id).map_err(|e| e.to_string())?;
+    let mut event = state.store.load(event_id).tauri()?;
     let existing = event.find_canvas_preset_mut(preset_id)?;
     preset.apply(existing);
     let updated = existing.clone();
-    state.store.save(&event).map_err(|e| e.to_string())?;
+    state.store.save(&event).tauri()?;
     Ok(updated)
 }
 
@@ -71,7 +72,7 @@ pub async fn delete_canvas_preset(
     preset_id: Uuid,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let mut event = state.store.load(event_id).map_err(|e| e.to_string())?;
+    let mut event = state.store.load(event_id).tauri()?;
     event.canvas_presets.retain(|p| p.id != preset_id);
-    state.store.save(&event).map_err(|e| e.to_string())
+    state.store.save(&event).tauri()
 }

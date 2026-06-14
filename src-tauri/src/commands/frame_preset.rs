@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use serde::Deserialize;
 use tauri::State;
 use uuid::Uuid;
+use crate::commands::IntoTauri;
 use crate::project::model::{CropMethod, FramePreset};
 use crate::AppState;
 
@@ -40,10 +41,10 @@ pub async fn create_frame_preset(
     preset: FramePresetInput,
     state: State<'_, AppState>,
 ) -> Result<FramePreset, String> {
-    let mut event = state.store.load(event_id).map_err(|e| e.to_string())?;
+    let mut event = state.store.load(event_id).tauri()?;
     let preset = preset.into_preset(Uuid::new_v4());
     event.frame_presets.push(preset.clone());
-    state.store.save(&event).map_err(|e| e.to_string())?;
+    state.store.save(&event).tauri()?;
     Ok(preset)
 }
 
@@ -54,11 +55,11 @@ pub async fn update_frame_preset(
     preset: FramePresetInput,
     state: State<'_, AppState>,
 ) -> Result<FramePreset, String> {
-    let mut event = state.store.load(event_id).map_err(|e| e.to_string())?;
+    let mut event = state.store.load(event_id).tauri()?;
     let existing = event.find_frame_preset_mut(preset_id)?;
     preset.apply(existing);
     let updated = existing.clone();
-    state.store.save(&event).map_err(|e| e.to_string())?;
+    state.store.save(&event).tauri()?;
     state.preview_cache.lock().unwrap().retain(|(_, fpid), _| *fpid != preset_id);
     Ok(updated)
 }
@@ -69,12 +70,12 @@ pub async fn delete_frame_preset(
     preset_id: Uuid,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let mut event = state.store.load(event_id).map_err(|e| e.to_string())?;
+    let mut event = state.store.load(event_id).tauri()?;
     event.frame_presets.retain(|p| p.id != preset_id);
     if event.active_frame_preset_id == Some(preset_id) {
         event.active_frame_preset_id = event.frame_presets.first().map(|p| p.id);
     }
-    state.store.save(&event).map_err(|e| e.to_string())?;
+    state.store.save(&event).tauri()?;
     state.preview_cache.lock().unwrap().retain(|(_, fpid), _| *fpid != preset_id);
     Ok(())
 }

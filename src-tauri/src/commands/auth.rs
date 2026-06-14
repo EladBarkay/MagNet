@@ -3,6 +3,7 @@ use tauri::State;
 use crate::auth::entitlement::{save_cached as save_entitlement, Entitlement};
 use crate::auth::session::{save_cached as save_session, Session};
 use crate::auth::{client, jwt, AuthState};
+use crate::commands::IntoTauri;
 use crate::AppState;
 
 /// Called by the frontend after an interactive Supabase sign-in. Rust verifies
@@ -16,11 +17,11 @@ pub async fn establish_session(
     state: State<'_, AppState>,
 ) -> Result<Entitlement, String> {
     // Verify the token against Supabase JWKS — never trust the frontend's word.
-    let claims = jwt::verify(&access_token).await.map_err(|e| e.to_string())?;
+    let claims = jwt::verify(&access_token).await.tauri()?;
 
     let entitlement = client::fetch_entitlement(&access_token, claims.email.clone())
         .await
-        .map_err(|e| e.to_string())?;
+        .tauri()?;
 
     let session = Session {
         access_token,
@@ -31,8 +32,8 @@ pub async fn establish_session(
 
     let session_path = state.app_data_dir.join("session.json");
     let entitlement_path = state.app_data_dir.join("entitlement.json");
-    save_session(&session_path, &session).map_err(|e| e.to_string())?;
-    save_entitlement(&entitlement_path, &entitlement).map_err(|e| e.to_string())?;
+    save_session(&session_path, &session).tauri()?;
+    save_entitlement(&entitlement_path, &entitlement).tauri()?;
 
     if let Ok(mut guard) = state.auth.lock() {
         *guard = Some(AuthState { session, entitlement: entitlement.clone() });

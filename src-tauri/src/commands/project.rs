@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use tauri::State;
 use uuid::Uuid;
+use crate::commands::IntoTauri;
 use crate::project::model::{Event, Photo, PhotoBatch};
 use crate::AppState;
 
@@ -13,21 +14,21 @@ pub fn open_in_explorer(path: String) -> Result<(), String> {
         std::process::Command::new("explorer")
             .arg(&path)
             .spawn()
-            .map_err(|e| e.to_string())?;
+            .tauri()?;
     }
     #[cfg(target_os = "macos")]
     {
         std::process::Command::new("open")
             .arg(&path)
             .spawn()
-            .map_err(|e| e.to_string())?;
+            .tauri()?;
     }
     #[cfg(target_os = "linux")]
     {
         std::process::Command::new("xdg-open")
             .arg(&path)
             .spawn()
-            .map_err(|e| e.to_string())?;
+            .tauri()?;
     }
     Ok(())
 }
@@ -35,10 +36,10 @@ pub fn open_in_explorer(path: String) -> Result<(), String> {
 #[tauri::command]
 pub async fn open_event(path: PathBuf, state: State<'_, AppState>) -> Result<Event, String> {
     // Resume by root_path first, then fall back to legacy batch-path lookup
-    if let Some(event) = state.store.find_by_root_path(&path).map_err(|e| e.to_string())? {
+    if let Some(event) = state.store.find_by_root_path(&path).tauri()? {
         return Ok(event);
     }
-    if let Some(event) = state.store.find_by_source_path(&path).map_err(|e| e.to_string())? {
+    if let Some(event) = state.store.find_by_source_path(&path).tauri()? {
         return Ok(event);
     }
     // New event — create record only, no auto-batch.
@@ -50,18 +51,18 @@ pub async fn open_event(path: PathBuf, state: State<'_, AppState>) -> Result<Eve
         .into_owned();
     let mut event = Event::new(folder_name);
     event.root_path = Some(path);
-    state.store.save(&event).map_err(|e| e.to_string())?;
+    state.store.save(&event).tauri()?;
     Ok(event)
 }
 
 #[tauri::command]
 pub async fn save_event(event: Event, state: State<'_, AppState>) -> Result<(), String> {
-    state.store.save(&event).map_err(|e| e.to_string())
+    state.store.save(&event).tauri()
 }
 
 #[tauri::command]
 pub async fn delete_event(event_id: Uuid, state: State<'_, AppState>) -> Result<(), String> {
-    state.store.delete(event_id).map_err(|e| e.to_string())
+    state.store.delete(event_id).tauri()
 }
 
 #[tauri::command]
@@ -70,9 +71,9 @@ pub async fn set_output_folder(
     folder: PathBuf,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let mut event = state.store.load(event_id).map_err(|e| e.to_string())?;
+    let mut event = state.store.load(event_id).tauri()?;
     event.output_folder = Some(folder);
-    state.store.save(&event).map_err(|e| e.to_string())
+    state.store.save(&event).tauri()
 }
 
 #[tauri::command]
@@ -81,7 +82,7 @@ pub async fn add_batch(
     folder: PathBuf,
     state: State<'_, AppState>,
 ) -> Result<Event, String> {
-    let mut event = state.store.load(event_id).map_err(|e| e.to_string())?;
+    let mut event = state.store.load(event_id).tauri()?;
     let batch_name = folder
         .file_name()
         .unwrap_or_default()
@@ -90,7 +91,7 @@ pub async fn add_batch(
     let mut batch = PhotoBatch::new(batch_name, folder.clone());
     batch.photos = scan_folder(&folder)?;
     event.batches.push(batch);
-    state.store.save(&event).map_err(|e| e.to_string())?;
+    state.store.save(&event).tauri()?;
 
     // Start watching the new batch folder for changes
     if let Ok(mut watcher) = state.watcher.lock() {
@@ -106,7 +107,7 @@ pub async fn delete_batch(
     batch_id: Uuid,
     state: State<'_, AppState>,
 ) -> Result<Event, String> {
-    let mut event = state.store.load(event_id).map_err(|e| e.to_string())?;
+    let mut event = state.store.load(event_id).tauri()?;
     if let Some(batch) = event.batches.iter().find(|b| b.id == batch_id) {
         let batch_path = batch.source_path.clone();
         if let Ok(mut watcher) = state.watcher.lock() {
@@ -114,7 +115,7 @@ pub async fn delete_batch(
         }
     }
     event.batches.retain(|b| b.id != batch_id);
-    state.store.save(&event).map_err(|e| e.to_string())?;
+    state.store.save(&event).tauri()?;
     Ok(event)
 }
 
@@ -124,7 +125,7 @@ pub async fn refresh_batch(
     batch_id: Uuid,
     state: State<'_, AppState>,
 ) -> Result<Event, String> {
-    let mut event = state.store.load(event_id).map_err(|e| e.to_string())?;
+    let mut event = state.store.load(event_id).tauri()?;
     let batch = event
         .batches
         .iter_mut()
@@ -136,7 +137,7 @@ pub async fn refresh_batch(
     let old = std::mem::take(&mut batch.photos);
     batch.photos = merge_photos(old, fresh);
 
-    state.store.save(&event).map_err(|e| e.to_string())?;
+    state.store.save(&event).tauri()?;
     Ok(event)
 }
 
@@ -145,7 +146,7 @@ pub async fn refresh_batch(
 /// (existing watches are not persisted across restarts).
 #[tauri::command]
 pub async fn sync_watches(event_id: Uuid, state: State<'_, AppState>) -> Result<(), String> {
-    let event = state.store.load(event_id).map_err(|e| e.to_string())?;
+    let event = state.store.load(event_id).tauri()?;
     if let Ok(mut watcher) = state.watcher.lock() {
         for batch in &event.batches {
             let _ = watcher.watch(&batch.source_path);
@@ -164,7 +165,7 @@ pub async fn sync_watches(event_id: Uuid, state: State<'_, AppState>) -> Result<
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 fn scan_folder(path: &std::path::Path) -> Result<Vec<Photo>, String> {
-    let entries = std::fs::read_dir(path).map_err(|e| e.to_string())?;
+    let entries = std::fs::read_dir(path).tauri()?;
     let mut photos = Vec::new();
     for entry in entries.flatten() {
         let p = entry.path();

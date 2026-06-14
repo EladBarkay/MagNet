@@ -4,6 +4,7 @@ use rayon::prelude::*;
 use tauri::{Emitter, State};
 use uuid::Uuid;
 use serde::Serialize;
+use crate::commands::IntoTauri;
 use crate::photo::batch::{prepare_frames, PreparedFrames};
 use crate::project::model::{FramePreset, Photo};
 use crate::AppState;
@@ -77,7 +78,7 @@ pub async fn export_batch(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let event = state.store.load(event_id).map_err(|e| e.to_string())?;
+    let event = state.store.load(event_id).tauri()?;
 
     let canvas_preset = event.find_canvas_preset(canvas_preset_id)?.clone();
     let frame_preset = event.find_frame_preset(frame_preset_id)?.clone();
@@ -95,7 +96,7 @@ pub async fn export_batch(
 
     let timestamp = chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
     let output_dir = output_root.join(&timestamp);
-    std::fs::create_dir_all(&output_dir).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&output_dir).tauri()?;
 
     let output_dir_clone = output_dir.clone();
     let slot_w = canvas_preset.slot_width();
@@ -189,7 +190,7 @@ pub async fn print_photos(
     canvas_preset_id: Uuid,
     state: State<'_, AppState>,
 ) -> Result<usize, String> {
-    let mut event = state.store.load(event_id).map_err(|e| e.to_string())?;
+    let mut event = state.store.load(event_id).tauri()?;
     let canvas_preset = event.find_canvas_preset(canvas_preset_id)?.clone();
     let frame_preset = event.find_frame_preset(frame_preset_id)?.clone();
 
@@ -223,12 +224,12 @@ pub async fn print_photos(
         .collect();
 
     let tmp_dir = std::env::temp_dir().join("magnet_print");
-    std::fs::create_dir_all(&tmp_dir).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&tmp_dir).tauri()?;
 
     let mut paths: Vec<PathBuf> = Vec::new();
     for (i, canvas) in canvases.iter().enumerate() {
         let p = tmp_dir.join(format!("print_{i:04}.jpg"));
-        crate::photo::export::export_print_ready(canvas, &p).map_err(|e| e.to_string())?;
+        crate::photo::export::export_print_ready(canvas, &p).tauri()?;
         paths.push(p);
     }
 
@@ -239,7 +240,7 @@ pub async fn print_photos(
             }
         }
     }
-    state.store.save(&event).map_err(|e| e.to_string())?;
+    state.store.save(&event).tauri()?;
 
     Ok(paths.len())
 }
