@@ -218,6 +218,15 @@ async fn auth_refresh_loop(app: tauri::AppHandle) {
             }
         };
 
+        // Persist the new tokens immediately after step 1 so that a failure in
+        // step 2 or 3 never leaves the old (now-consumed) refresh token on disk.
+        let _ = save_session(&data_dir.join("session.json"), &session);
+        if let Ok(mut guard) = state.auth.lock() {
+            if let Some(a) = guard.as_mut() {
+                a.session = session.clone();
+            }
+        }
+
         // 2. Verify the freshly minted access token.
         let claims = match auth::jwt::verify(&session.access_token).await {
             Ok(c) => c,
