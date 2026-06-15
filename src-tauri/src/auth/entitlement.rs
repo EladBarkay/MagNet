@@ -42,11 +42,13 @@ impl Entitlement {
         Utc::now() - self.last_verified < Duration::days(14)
     }
 
-    /// The tier actually in effect right now. Downgrades to Free once the
-    /// subscription `expires_at` is in the past.
+    /// The tier actually in effect right now. Downgrades to Free only when the
+    /// subscription `expires_at` is in the past AND the offline grace window has
+    /// also lapsed.  Within the grace window the cached tier is kept because the
+    /// subscription may have been renewed since the last server verification.
     pub fn effective_tier(&self) -> Tier {
         if let Some(expiry) = self.expires_at {
-            if Utc::now().date_naive() > expiry {
+            if Utc::now().date_naive() > expiry && !self.is_grace_period_valid() {
                 return Tier::Free;
             }
         }
@@ -87,8 +89,15 @@ mod tests {
         e.expires_at = Some(Utc::now().date_naive() + Duration::days(1));
         assert_eq!(e.effective_tier(), Tier::Pro, "future expiry keeps tier");
 
+        // Past expiry but still within the 14-day grace window (e.g. subscription
+        // was renewed offline; we give benefit of the doubt until we can verify).
         e.expires_at = Some(Utc::now().date_naive() - Duration::days(1));
-        assert_eq!(e.effective_tier(), Tier::Free, "past expiry downgrades");
+        e.last_verified = Utc::now() - Duration::days(1);
+        assert_eq!(e.effective_tier(), Tier::Pro, "past expiry within grace keeps tier");
+
+        // Past expiry AND grace lapsed — definitively downgrade.
+        e.last_verified = Utc::now() - Duration::days(15);
+        assert_eq!(e.effective_tier(), Tier::Free, "past expiry outside grace downgrades");
 
         e.expires_at = None;
         assert_eq!(e.effective_tier(), Tier::Pro, "no expiry keeps tier");
