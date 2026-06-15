@@ -93,9 +93,16 @@ pub async fn fetch_entitlement(access_token: &str, email: Option<String>) -> Res
         "studio" => Tier::Studio,
         _ => Tier::Free,
     };
-    let expires_at = row
-        .expires_at
-        .and_then(|s| chrono::NaiveDate::parse_from_str(&s, "%Y-%m-%d").ok());
+    let expires_at = row.expires_at.and_then(|s| {
+        // Supabase may return a plain date ("2025-12-31") or a full timestamptz
+        // ("2025-12-31T00:00:00+00:00").  Silently ignoring a parse error here
+        // would make an expired subscription appear perpetual, so try both.
+        chrono::NaiveDate::parse_from_str(&s, "%Y-%m-%d")
+            .or_else(|_| {
+                chrono::DateTime::parse_from_rfc3339(&s).map(|dt| dt.date_naive())
+            })
+            .ok()
+    });
 
     Ok(Entitlement {
         email,
