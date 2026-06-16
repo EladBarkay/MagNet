@@ -80,10 +80,12 @@ export default function CanvasPresetForm({ event, onCreated, onCancel, editing }
       </div>
 
       <div className="grid grid-cols-2 gap-2 text-xs">
-        <Field label="Name" span={2}>
-          <input value={name} onChange={e => setName(e.target.value)}
-            className="w-full bg-neutral-700 rounded px-2 py-1 text-neutral-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
-        </Field>
+        <div className="col-span-2">
+          <Field label="Name">
+            <input value={name} onChange={e => setName(e.target.value)}
+              className="w-full bg-neutral-700 rounded px-2 py-1 text-neutral-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+          </Field>
+        </div>
         <Field label="Width (px)">
           <NumInput value={w} onChange={setW} min={100} />
         </Field>

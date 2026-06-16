@@ -23,18 +23,16 @@ export function Modal({
   );
 }
 
-/** Labeled form field (label above content). `span` spans 2 grid columns. */
+/** Labeled form field (label above content). */
 export function Field({
   label,
   children,
-  span,
 }: {
   label: string;
   children: React.ReactNode;
-  span?: number;
 }) {
   return (
-    <div className={["space-y-1", span === 2 ? "col-span-2" : ""].join(" ")}>
+    <div className="space-y-1">
       <label className="text-xs font-medium text-neutral-400">{label}</label>
       {children}
     </div>

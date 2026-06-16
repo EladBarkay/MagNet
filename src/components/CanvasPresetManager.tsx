@@ -4,6 +4,7 @@ import { CanvasPreset, MagnetEvent } from "../types";
 import CanvasPresetForm from "./CanvasPresetForm";
 import { Modal } from "./ui";
 import { reorderById } from "../lib/reorder";
+import { useAsyncForm } from "../hooks/useAsyncForm";
 
 type Props = {
   event: MagnetEvent;
@@ -17,21 +18,18 @@ export default function CanvasPresetManager({ event, onClose, onEventUpdate }: P
   const [mode, setMode] = useState<Mode>(
     event.canvas_presets.length === 0 ? { kind: "new" } : { kind: "list" }
   );
-  const [error, setError] = useState("");
+  const { error, run } = useAsyncForm();
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
 
   async function remove(preset: CanvasPreset) {
-    setError("");
-    try {
+    await run(async () => {
       await invoke("delete_canvas_preset", { eventId: event.id, presetId: preset.id });
       onEventUpdate({
         ...event,
         canvas_presets: event.canvas_presets.filter((p) => p.id !== preset.id),
       });
-    } catch (e) {
-      setError(String(e));
-    }
+    });
   }
 
   function reorder(targetId: string) {

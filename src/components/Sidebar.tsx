@@ -33,7 +33,9 @@ export default function Sidebar({
 
   return (
     <aside className="w-52 shrink-0 flex flex-col bg-neutral-850 border-r border-neutral-700 overflow-y-auto">
-      <Section label="Batches" action={<AddButton onClick={onAddBatch} />}>
+      <Section label="Batches" action={
+        <button onClick={onAddBatch} className="text-[10px] text-blue-400 hover:text-blue-300 font-medium">+ Add</button>
+      }>
         {event.batches.length === 0 ? (
           <p className="px-3 py-1 text-xs text-neutral-600">
             No batches —{" "}
@@ -95,7 +97,9 @@ export default function Sidebar({
         )}
       </Section>
 
-      <Section label="Frames" action={<AddButton onClick={onAddFrame} />}>
+      <Section label="Frames" action={
+        <button onClick={onAddFrame} className="text-[10px] text-blue-400 hover:text-blue-300 font-medium">+ Add</button>
+      }>
         {event.frame_presets.length === 0 ? (
           <p className="px-3 py-1 text-xs text-neutral-600">
             No frames —{" "}
@@ -180,14 +184,6 @@ export default function Sidebar({
   );
 }
 
-function AddButton({ onClick }: { onClick: () => void }) {
-  return (
-    <button onClick={onClick} className="text-[10px] text-blue-400 hover:text-blue-300 font-medium">
-      + Add
-    </button>
-  );
-}
-
 function Section({
   label, children, action,
 }: {
@@ -207,26 +203,18 @@ function Section({
 function SidebarItem({
   label, sublabel, active, onClick,
 }: {
-  label: string; sublabel?: string; active?: boolean; onClick?: () => void;
+  label: string; sublabel?: string; active?: boolean; onClick: () => void;
 }) {
-  const cls = [
-    "w-full text-left px-3 py-1.5 text-sm transition-colors",
-    active ? "bg-blue-600/20 text-blue-300" : "text-neutral-300",
-    onClick ? "hover:bg-neutral-700/60" : "",
-  ].join(" ");
-
-  if (onClick) {
-    return (
-      <button onClick={onClick} className={cls}>
-        <span className="block truncate">{label}</span>
-        {sublabel && <span className="block text-[10px] text-neutral-500">{sublabel}</span>}
-      </button>
-    );
-  }
   return (
-    <div className={cls}>
+    <button
+      onClick={onClick}
+      className={[
+        "w-full text-left px-3 py-1.5 text-sm transition-colors hover:bg-neutral-700/60",
+        active ? "bg-blue-600/20 text-blue-300" : "text-neutral-300",
+      ].join(" ")}
+    >
       <span className="block truncate">{label}</span>
       {sublabel && <span className="block text-[10px] text-neutral-500">{sublabel}</span>}
-    </div>
+    </button>
   );
 }

@@ -1,9 +1,10 @@
 use tauri::State;
 
-use crate::auth::entitlement::{save_cached as save_entitlement, Entitlement};
-use crate::auth::session::{save_cached as save_session, Session};
+use crate::auth::entitlement::Entitlement;
+use crate::auth::session::Session;
 use crate::auth::{client, jwt, AuthState};
 use crate::commands::IntoTauri;
+use crate::json_store;
 use crate::AppState;
 
 /// Called by the frontend after an interactive Supabase sign-in. Rust verifies
@@ -32,8 +33,8 @@ pub async fn establish_session(
 
     let session_path = state.app_data_dir.join("session.json");
     let entitlement_path = state.app_data_dir.join("entitlement.json");
-    save_session(&session_path, &session).tauri()?;
-    save_entitlement(&entitlement_path, &entitlement).tauri()?;
+    json_store::save_json(&session_path, &session).tauri()?;
+    json_store::save_json(&entitlement_path, &entitlement).tauri()?;
 
     if let Ok(mut guard) = state.auth.lock() {
         *guard = Some(AuthState { session, entitlement: entitlement.clone() });

@@ -109,10 +109,10 @@ pub fn run() {
 
             // Dev bypass takes precedence; otherwise load cached session + entitlement.
             let initial_auth = dev_auth_state().or_else(|| {
-                let session = auth::session::load_cached(&data_dir.join("session.json"))?;
+                let session = json_store::load_json(&data_dir.join("session.json")).ok()?;
                 let entitlement =
-                    auth::entitlement::load_cached(&data_dir.join("entitlement.json"))
-                        .unwrap_or_else(Entitlement::free);
+                    json_store::load_json(&data_dir.join("entitlement.json"))
+                        .unwrap_or_else(|_| Entitlement::free());
                 Some(AuthState { session, entitlement })
             });
 
@@ -172,8 +172,6 @@ pub fn run() {
 ///   session (or the dev bypass) loaded.
 async fn auth_refresh_loop(app: tauri::AppHandle) {
     use tauri::{Emitter, Manager};
-    use auth::entitlement::save_cached as save_entitlement;
-    use auth::session::save_cached as save_session;
 
     let mut attempts: u32 = 0;
 
@@ -221,7 +219,7 @@ async fn auth_refresh_loop(app: tauri::AppHandle) {
 
         // Persist the new tokens immediately after step 1 so that a failure in
         // step 2 or 3 never leaves the old (now-consumed) refresh token on disk.
-        let _ = save_session(&data_dir.join("session.json"), &session);
+        let _ = json_store::save_json(&data_dir.join("session.json"), &session);
         if let Ok(mut guard) = state.auth.lock() {
             if let Some(a) = guard.as_mut() {
                 a.session = session.clone();
@@ -242,8 +240,8 @@ async fn auth_refresh_loop(app: tauri::AppHandle) {
                 Err(_) => continue,
             };
 
-        let _ = save_session(&data_dir.join("session.json"), &session);
-        let _ = save_entitlement(&data_dir.join("entitlement.json"), &entitlement);
+        let _ = json_store::save_json(&data_dir.join("session.json"), &session);
+        let _ = json_store::save_json(&data_dir.join("entitlement.json"), &entitlement);
         if let Ok(mut guard) = state.auth.lock() {
             *guard = Some(AuthState { session, entitlement });
         }

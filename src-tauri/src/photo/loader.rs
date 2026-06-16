@@ -5,14 +5,8 @@ use sha2::{Sha256, Digest};
 use crate::project::model::{Orientation, Photo};
 use uuid::Uuid;
 
-pub struct LoadedPhoto {
-    pub image: DynamicImage,
-}
-
-pub fn load_photo(path: &Path) -> Result<LoadedPhoto> {
-    let image = image::open(path)
-        .with_context(|| format!("opening image {}", path.display()))?;
-    Ok(LoadedPhoto { image })
+pub fn load_photo(path: &Path) -> Result<DynamicImage> {
+    image::open(path).with_context(|| format!("opening image {}", path.display()))
 }
 
 pub fn read_exif_orientation(path: &Path) -> Option<Orientation> {

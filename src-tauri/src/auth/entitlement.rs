@@ -1,8 +1,5 @@
-use crate::json_store::{load_json, save_json};
-use anyhow::Result;
 use chrono::{DateTime, Duration, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
-use std::path::Path;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -56,16 +53,6 @@ impl Entitlement {
     }
 }
 
-/// Load the cached entitlement from disk. Returns `None` if missing/unparseable.
-pub fn load_cached(path: &Path) -> Option<Entitlement> {
-    load_json(path).ok()
-}
-
-/// Persist the entitlement to `entitlement.json`.
-pub fn save_cached(path: &Path, ent: &Entitlement) -> Result<()> {
-    save_json(path, ent)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -112,8 +99,8 @@ mod tests {
         e.tier = Tier::Studio;
         e.expires_at = Some(NaiveDate::from_ymd_opt(2030, 1, 1).unwrap());
 
-        save_cached(&path, &e).unwrap();
-        let loaded = load_cached(&path).unwrap();
+        crate::json_store::save_json(&path, &e).unwrap();
+        let loaded: Entitlement = crate::json_store::load_json(&path).unwrap();
         assert_eq!(loaded.tier, Tier::Studio);
         assert_eq!(loaded.email.as_deref(), Some("a@b.com"));
         assert_eq!(loaded.expires_at, e.expires_at);

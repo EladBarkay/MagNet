@@ -1,7 +1,7 @@
 use anyhow::Result;
 use image::{DynamicImage, RgbaImage};
 use crate::project::model::{CropRect, FramePreset, Orientation, Photo};
-use crate::photo::{loader, orientation, crop, frame};
+use crate::photo::{loader, crop, frame};
 
 /// Frames pre-resized to their final placement dimensions and pre-converted
 /// to RGBA8 — prepared **once** per export/print run so the per-photo hot path
@@ -96,7 +96,7 @@ pub fn frame_photo_for_canvas(
     frames: &PreparedFrames,
 ) -> Result<DynamicImage> {
     let loaded = loader::load_photo(&photo.path)?;
-    let orient = orientation::detect_orientation(photo);
+    let orient = photo.effective_orientation();
     let ratio = orientation_ratio(preset, orient);
     let (target_w, target_h, rotate) = placement(preset, orient, slot_w, slot_h);
     let frame_img = match orient {
@@ -106,17 +106,17 @@ pub fn frame_photo_for_canvas(
 
     let crop_rect = photo.crop_override.unwrap_or_else(|| {
         crop::compute_crop_rect(
-            loaded.image.width(),
-            loaded.image.height(),
+            loaded.width(),
+            loaded.height(),
             ratio,
             preset.crop_method,
         )
     });
     // SIMD crop+resize in one pass (no intermediate full-res copy). Falls back
     // to the image-crate path for uncommon pixel formats (e.g. 16-bit TIFF).
-    let scaled = fast_crop_resize(&loaded.image, crop_rect, target_w, target_h)
+    let scaled = fast_crop_resize(&loaded, crop_rect, target_w, target_h)
         .unwrap_or_else(|| {
-            let cropped = crop::apply_crop(&loaded.image, crop_rect);
+            let cropped = crop::apply_crop(&loaded, crop_rect);
             cropped.resize_exact(target_w, target_h, image::imageops::FilterType::Triangle)
         });
     // JPEG decodes are RGB8 → blend in place, no RGBA round-trip. Other pixel
@@ -344,13 +344,13 @@ mod tests {
         let loaded = loader::load_photo(&path).unwrap();
         println!("decode:        {:?}", t.elapsed());
 
-        let orient = orientation::detect_orientation(&photo);
+        let orient = photo.effective_orientation();
         let ratio = orientation_ratio(&preset, orient);
         let (tw, th, rotate) = placement(&preset, orient, 1200, 1600);
         let rect = crop::compute_crop_rect(6000, 4000, ratio, CropMethod::Center);
 
         let t = std::time::Instant::now();
-        let scaled = fast_crop_resize(&loaded.image, rect, tw, th).unwrap();
+        let scaled = fast_crop_resize(&loaded, rect, tw, th).unwrap();
         println!("crop+resize:   {:?}", t.elapsed());
 
         let t = std::time::Instant::now();

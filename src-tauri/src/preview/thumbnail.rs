@@ -43,10 +43,12 @@ impl ThumbnailCache {
         let img = image::open(photo_path)
             .with_context(|| format!("opening {} for thumbnail", photo_path.display()))?;
         let thumb = img.thumbnail(THUMB_SIZE, THUMB_SIZE);
+        let mut buf = Vec::new();
         thumb
-            .save_with_format(out_path, image::ImageFormat::Jpeg)
-            .context("saving thumbnail")?;
-        std::fs::read(out_path).context("reading generated thumbnail")
+            .write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Jpeg)
+            .context("encoding thumbnail")?;
+        std::fs::write(out_path, &buf).context("saving thumbnail")?;
+        Ok(buf)
     }
 
     pub fn invalidate(&self, photo_path: &Path) {
