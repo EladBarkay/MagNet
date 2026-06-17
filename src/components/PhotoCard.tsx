@@ -6,8 +6,11 @@ import { QtyButton } from "./ui";
 
 type Props = {
   photo: Photo;
+  /** In the multi-selection (shows a ring). */
   selected: boolean;
-  onClick: () => void;
+  /** The last-clicked photo (preview/anchor) — stronger ring. */
+  active: boolean;
+  onClick: (e: React.MouseEvent) => void;
   cellSize: number;
   /** Number queued for the next process run. */
   qty: number;
@@ -15,7 +18,7 @@ type Props = {
   onQtyDelta: (delta: number) => void;
 };
 
-function PhotoCard({ photo, selected, onClick, cellSize, qty, onQtyDelta }: Props) {
+function PhotoCard({ photo, selected, active, onClick, cellSize, qty, onQtyDelta }: Props) {
   const src = useThumbnail(photo.path, photo.content_hash);
   const filename = basename(photo.path);
 
@@ -24,10 +27,12 @@ function PhotoCard({ photo, selected, onClick, cellSize, qty, onQtyDelta }: Prop
       className={[
         "relative w-full h-full rounded overflow-hidden group",
         "transition-all duration-100",
-        // Dim photos queued for 0 copies — they won't be printed/exported.
+        // Dim photos queued for 0 copies and not selected — won't be printed/exported.
         qty === 0 && !selected ? "opacity-40 hover:opacity-100" : "",
-        selected
+        active
           ? "ring-2 ring-blue-400 ring-offset-1 ring-offset-neutral-900"
+          : selected
+          ? "ring-2 ring-blue-500/70"
           : "hover:ring-1 hover:ring-neutral-500 hover:ring-offset-1 hover:ring-offset-neutral-900",
       ].join(" ")}
       title={filename}

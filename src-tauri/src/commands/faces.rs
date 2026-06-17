@@ -63,6 +63,7 @@ fn count_faces(detector: &mut dyn Detector, path: &Path) -> u32 {
 pub async fn count_faces_in_batch(
     event_id: Uuid,
     batch_id: Uuid,
+    photo_ids: Option<Vec<Uuid>>,
     app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<HashMap<Uuid, u32>, String> {
@@ -71,8 +72,16 @@ pub async fn count_faces_in_batch(
         .batches.iter()
         .find(|b| b.id == batch_id)
         .ok_or("batch not found")?;
-    let paths: Vec<(Uuid, std::path::PathBuf)> =
-        batch.photos.iter().map(|p| (p.id, p.path.clone())).collect();
+    // Scan only the requested photos when given a non-empty subset; otherwise the
+    // whole batch.
+    let only: Option<std::collections::HashSet<Uuid>> = photo_ids
+        .filter(|ids| !ids.is_empty())
+        .map(|ids| ids.into_iter().collect());
+    let paths: Vec<(Uuid, std::path::PathBuf)> = batch
+        .photos.iter()
+        .filter(|p| only.as_ref().is_none_or(|s| s.contains(&p.id)))
+        .map(|p| (p.id, p.path.clone()))
+        .collect();
     let total = paths.len();
 
     tokio::task::spawn_blocking(move || {

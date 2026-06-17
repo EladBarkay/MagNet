@@ -11,6 +11,7 @@ type Props = {
   activeBatch: PhotoBatch | null;
   queuedTotal: number;
   allQty: number;
+  selectedCount: number;
   cellSize: number;
   hideEmpty: boolean;
   scanning: boolean;
@@ -25,7 +26,7 @@ type Props = {
 };
 
 export default function Toolbar({
-  event, entitlement, status, totalPhotos, activeBatch, queuedTotal, allQty, cellSize,
+  event, entitlement, status, totalPhotos, activeBatch, queuedTotal, allQty, selectedCount, cellSize,
   hideEmpty, scanning,
   onOpenEvent, onDeleteEvent, onProcess, onSettings, onSetAllQty, onCellSizeChange,
   onScanFaces, onToggleHideEmpty,
@@ -91,10 +92,12 @@ export default function Toolbar({
               </>
             )}
 
-            {/* Batch-wide print qty: set all photos in the current batch at once */}
+            {/* Print qty for the selection (or whole batch when none selected) */}
             {activeBatch && activeBatch.photos.length > 0 && (
               <div className="flex items-center gap-1.5">
-                <span className="text-xs text-neutral-500">All:</span>
+                <span className="text-xs text-neutral-500">
+                  {selectedCount > 0 ? `Selected (${selectedCount}):` : "All:"}
+                </span>
                 <div className="flex items-center gap-0.5 rounded-full bg-neutral-700 px-0.5 py-0.5">
                   <QtyButton size="sm" label="−" onClick={() => changeAllQty(-1)} disabled={allQty <= 0} />
                   <span className="min-w-[18px] text-center text-xs font-semibold text-neutral-200 tabular-nums">
