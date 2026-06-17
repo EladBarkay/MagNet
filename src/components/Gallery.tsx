@@ -7,15 +7,18 @@ const GAP = 6;
 
 type Props = {
   photos: Photo[];
+  /** The last-clicked photo (preview/anchor) — gets the stronger ring. */
   selectedId: string | null;
-  onSelect: (photo: Photo) => void;
+  /** Every photo in the multi-selection — all get a ring. */
+  selectedIds: Set<string>;
+  onPhotoClick: (photo: Photo, e: React.MouseEvent) => void;
   photoQueue: Record<string, number>;
   onQtyDelta: (photoId: string, delta: number) => void;
   cellSize?: number;
   onColCountChange?: (n: number) => void;
 };
 
-export default function Gallery({ photos, selectedId, onSelect, photoQueue, onQtyDelta, cellSize = 168, onColCountChange }: Props) {
+export default function Gallery({ photos, selectedId, selectedIds, onPhotoClick, photoQueue, onQtyDelta, cellSize = 168, onColCountChange }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const cellStride = cellSize + GAP;
@@ -55,8 +58,9 @@ export default function Gallery({ photos, selectedId, onSelect, photoQueue, onQt
         >
           <PhotoCard
             photo={photo}
-            selected={photo.id === selectedId}
-            onClick={() => onSelect(photo)}
+            selected={selectedIds.has(photo.id)}
+            active={photo.id === selectedId}
+            onClick={(e) => onPhotoClick(photo, e)}
             cellSize={cellSize}
             qty={photoQueue[photo.id] ?? 0}
             onQtyDelta={(delta) => onQtyDelta(photo.id, delta)}
@@ -64,7 +68,7 @@ export default function Gallery({ photos, selectedId, onSelect, photoQueue, onQt
         </div>
       );
     },
-    [photos, selectedId, onSelect, colCount, photoQueue, onQtyDelta, cellSize]
+    [photos, selectedId, selectedIds, onPhotoClick, colCount, photoQueue, onQtyDelta, cellSize]
   );
 
   if (photos.length === 0) {

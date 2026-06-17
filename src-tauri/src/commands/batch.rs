@@ -38,7 +38,7 @@ fn load_and_prepare_frames(
 
 /// Run `f` on a dedicated 4-thread rayon pool so peak memory stays ~4 decoded
 /// photos under the 500MB ceiling; fall back to the global pool if one can't build.
-fn run_bounded<R, F>(f: F) -> R
+pub(crate) fn run_bounded<R, F>(f: F) -> R
 where
     F: FnOnce() -> R + Send,
     R: Send,

@@ -11,18 +11,25 @@ type Props = {
   activeBatch: PhotoBatch | null;
   queuedTotal: number;
   allQty: number;
+  selectedCount: number;
   cellSize: number;
+  hideEmpty: boolean;
+  scanning: boolean;
   onOpenEvent: () => void;
   onDeleteEvent: () => void;
   onProcess: () => void;
   onSettings: () => void;
   onSetAllQty: (qty: number) => void;
   onCellSizeChange: (size: number) => void;
+  onScanFaces: () => void;
+  onToggleHideEmpty: () => void;
 };
 
 export default function Toolbar({
-  event, entitlement, status, totalPhotos, activeBatch, queuedTotal, allQty, cellSize,
+  event, entitlement, status, totalPhotos, activeBatch, queuedTotal, allQty, selectedCount, cellSize,
+  hideEmpty, scanning,
   onOpenEvent, onDeleteEvent, onProcess, onSettings, onSetAllQty, onCellSizeChange,
+  onScanFaces, onToggleHideEmpty,
 }: Props) {
   const tier = entitlement?.tier ?? "free";
 
@@ -60,10 +67,37 @@ export default function Toolbar({
               <QtyButton size="sm" label="+" onClick={() => onCellSizeChange(Math.min(280, cellSize + 20))} disabled={cellSize >= 280} />
             </div>
 
-            {/* Batch-wide print qty: set all photos in the current batch at once */}
+            {activeBatch && activeBatch.photos.length > 0 && (
+              <>
+                {/* Suggest copies = face count per photo (runs on click) */}
+                <button
+                  onClick={onScanFaces}
+                  disabled={scanning}
+                  title="Set each photo's copies to the number of faces detected"
+                  className="px-2.5 py-1.5 bg-neutral-700 hover:bg-neutral-600 disabled:opacity-40 disabled:cursor-wait rounded text-xs font-medium transition-colors"
+                >
+                  {scanning ? "Scanning…" : "Suggest copies (faces)"}
+                </button>
+
+                {/* Show only photos queued for ≥1 copy */}
+                <label className="flex items-center gap-1.5 text-xs text-neutral-400 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={hideEmpty}
+                    onChange={onToggleHideEmpty}
+                    className="accent-blue-500"
+                  />
+                  Hide empty
+                </label>
+              </>
+            )}
+
+            {/* Print qty for the selection (or whole batch when none selected) */}
             {activeBatch && activeBatch.photos.length > 0 && (
               <div className="flex items-center gap-1.5">
-                <span className="text-xs text-neutral-500">All:</span>
+                <span className="text-xs text-neutral-500">
+                  {selectedCount > 0 ? `Selected (${selectedCount}):` : "All:"}
+                </span>
                 <div className="flex items-center gap-0.5 rounded-full bg-neutral-700 px-0.5 py-0.5">
                   <QtyButton size="sm" label="−" onClick={() => changeAllQty(-1)} disabled={allQty <= 0} />
                   <span className="min-w-[18px] text-center text-xs font-semibold text-neutral-200 tabular-nums">

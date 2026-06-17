@@ -54,6 +54,7 @@ anyhow = "1"
 
 # Logging
 log = "0.4"
+rustface = "0.1.7"
 
 [profile.release]
 opt-level = 3

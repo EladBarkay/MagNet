@@ -13,6 +13,7 @@ import EmptyState from "./components/EmptyState";
 import { useFsWatcher } from "./hooks/useFsWatcher";
 import { useAuthDeepLink } from "./hooks/useAuthDeepLink";
 import { reorderById } from "./lib/reorder";
+import { rangeIds } from "./lib/selection";
 import { EVENTS } from "./constants";
 import { MagnetEvent, Orientation, Photo, PhotoBatch, FramePreset, Entitlement } from "./types";
 
@@ -32,6 +33,18 @@ export default function App() {
   // Unified per-photo queue: photoId → quantity (session-only).
   const [photoQueue, setPhotoQueue] = useState<Record<string, number>>({});
   const [cellSize, setCellSize] = useState(168);
+  const [hideEmpty, setHideEmpty] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  // Multi-selection in the grid; `selected` (above) is the last-clicked photo and
+  // drives the preview + shift-range anchor.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const anchorRef = useRef<string | null>(null);
+
+  function clearSelection() {
+    setSelected(null);
+    setSelectedIds(new Set());
+    anchorRef.current = null;
+  }
   const [previewWidth, setPreviewWidth] = useState(288);
   const previewDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const colCountRef = useRef(1);
@@ -79,7 +92,7 @@ export default function App() {
       const evt = await invoke<MagnetEvent>("open_event", { path: folder });
       setEvent(evt);
       setActiveBatch(evt.batches[0] ?? null);
-      setSelected(null);
+      clearSelection();
       setPhotoQueue(initQueueForBatch(evt.batches[0]));
       invoke("sync_watches", { eventId: evt.id }).catch(() => {});
       setStatus("");
@@ -183,7 +196,7 @@ export default function App() {
       updateEvent(updated);
       const newBatch = updated.batches[updated.batches.length - 1];
       if (newBatch) { setActiveBatch(newBatch); setPhotoQueue(initQueueForBatch(newBatch)); }
-      setSelected(null);
+      clearSelection();
       setStatus("");
     } catch (e) {
       setStatus(`Error: ${e}`);
@@ -200,12 +213,96 @@ export default function App() {
 
   const totalPhotos = event?.batches.reduce((n, b) => n + b.photos.length, 0) ?? 0;
   const photos = activeBatch?.photos ?? [];
-  const queuedTotal = Object.values(photoQueue).reduce((s, q) => s + q, 0);
+  // When "hide empty" is on, drop photos queued for 0 copies from the grid.
+  const visiblePhotos = hideEmpty ? photos.filter((p) => (photoQueue[p.id] ?? 0) > 0) : photos;
 
-  // Derive uniform qty from queue — 0 if empty or mixed values.
-  const allQty = photos.length > 0 && photos.every(
-    (p) => (photoQueue[p.id] ?? 0) === (photoQueue[photos[0].id] ?? 0)
-  ) ? (photoQueue[photos[0].id] ?? 0) : 0;
+  // Batch actions act on the selection, or the whole batch when nothing is selected.
+  const targetIds = selectedIds.size > 0 ? [...selectedIds] : photos.map((p) => p.id);
+  // Process/totals only count the targeted photos.
+  const effectiveQueue = selectedIds.size > 0
+    ? Object.fromEntries(Object.entries(photoQueue).filter(([id]) => selectedIds.has(id)))
+    : photoQueue;
+  const queuedTotal = Object.values(effectiveQueue).reduce((s, q) => s + q, 0);
+
+  // Suggest per-photo export quantities = number of faces detected. Heavy, so
+  // it runs on user click (not automatically) with a live progress count. Scans
+  // only the selected photos (or the whole batch if none selected) and merges the
+  // result into the queue, leaving non-scanned photos' quantities untouched.
+  async function scanFaces() {
+    if (!event || !activeBatch) return;
+    const ids = selectedIds.size > 0 ? [...selectedIds] : null;
+    setScanning(true);
+    setStatus("Scanning faces…");
+    const unsub = await listen<{ done: number; total: number }>(
+      EVENTS.FACE_SCAN_PROGRESS,
+      (e) => setStatus(`Scanning faces… ${e.payload.done}/${e.payload.total}`)
+    );
+    try {
+      const counts = await invoke<Record<string, number>>("count_faces_in_batch", {
+        eventId: event.id,
+        batchId: activeBatch.id,
+        photoIds: ids,
+      });
+      // Positive counts only (matches adjustQty's "no zero entries" rule); a
+      // scanned photo with 0 faces falls through to qty 0 → dimmed card.
+      setPhotoQueue((prev) => {
+        const next = { ...prev };
+        for (const [id, n] of Object.entries(counts)) {
+          if (n > 0) next[id] = n;
+          else delete next[id];
+        }
+        return next;
+      });
+      setStatus("");
+    } catch (e) {
+      setStatus(`Error: ${e}`);
+    } finally {
+      unsub();
+      setScanning(false);
+    }
+  }
+
+  // Click selects (plain = replace, ctrl = toggle, shift = range from anchor);
+  // `selected` tracks the last click for the preview + shift anchor.
+  function handlePhotoClick(photo: Photo, e: React.MouseEvent) {
+    const id = photo.id;
+    setSelected(photo);
+    if (e.shiftKey && anchorRef.current) {
+      setSelectedIds(new Set(rangeIds(visiblePhotos, anchorRef.current, id)));
+    } else if (e.ctrlKey || e.metaKey) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.has(id) ? next.delete(id) : next.add(id);
+        return next;
+      });
+      anchorRef.current = id;
+    } else {
+      setSelectedIds(new Set([id]));
+      anchorRef.current = id;
+    }
+  }
+
+  // Ctrl/Cmd+A selects every photo currently shown in the grid.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "a" || e.key === "A")) {
+        if (!activeBatch) return;
+        // Don't hijack select-all inside text fields.
+        const t = e.target as HTMLElement | null;
+        if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+        e.preventDefault();
+        setSelectedIds(new Set(visiblePhotos.map((p) => p.id)));
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [activeBatch, visiblePhotos]);
+
+  // Derive uniform qty across the targeted photos — 0 if empty or mixed values.
+  const targetQtys = targetIds.map((id) => photoQueue[id] ?? 0);
+  const allQty = targetQtys.length > 0 && targetQtys.every((q) => q === targetQtys[0])
+    ? targetQtys[0]
+    : 0;
 
   // Keyboard navigation through photos when preview is open.
   useEffect(() => {
@@ -213,21 +310,24 @@ export default function App() {
     const handler = (e: KeyboardEvent) => {
       if (["ArrowRight", "ArrowLeft", "ArrowUp", "ArrowDown"].includes(e.key)) {
         e.preventDefault();
-        const idx = photos.findIndex((p) => p.id === selected.id);
+        const idx = visiblePhotos.findIndex((p) => p.id === selected.id);
         if (idx < 0) return;
         const cols = colCountRef.current;
         let next = idx;
-        if (e.key === "ArrowRight") next = Math.min(photos.length - 1, idx + 1);
+        if (e.key === "ArrowRight") next = Math.min(visiblePhotos.length - 1, idx + 1);
         else if (e.key === "ArrowLeft") next = Math.max(0, idx - 1);
-        else if (e.key === "ArrowDown") next = Math.min(photos.length - 1, idx + cols);
+        else if (e.key === "ArrowDown") next = Math.min(visiblePhotos.length - 1, idx + cols);
         else if (e.key === "ArrowUp") next = Math.max(0, idx - cols);
-        setSelected(photos[next]);
+        const nextPhoto = visiblePhotos[next];
+        setSelected(nextPhoto);
+        setSelectedIds(new Set([nextPhoto.id]));
+        anchorRef.current = nextPhoto.id;
       }
       if (e.key === "Escape") setSelected(null);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [selected, photos]);
+  }, [selected, visiblePhotos]);
 
   function adjustQty(photoId: string, delta: number) {
     setPhotoQueue((prev) => {
@@ -239,15 +339,18 @@ export default function App() {
     });
   }
 
+  // Set the queued qty for the targeted photos (selection, or whole batch when
+  // nothing is selected); other photos' quantities are left untouched.
   function handleSetAllQty(qty: number) {
     if (!activeBatch) return;
-    if (qty <= 0) {
-      setPhotoQueue({});
-      return;
-    }
-    const q: Record<string, number> = {};
-    for (const p of activeBatch.photos) q[p.id] = qty;
-    setPhotoQueue(q);
+    setPhotoQueue((prev) => {
+      const next = { ...prev };
+      for (const id of targetIds) {
+        if (qty <= 0) delete next[id];
+        else next[id] = qty;
+      }
+      return next;
+    });
   }
 
   // Set (or clear, with `null`) a photo's orientation override and mirror the
@@ -277,7 +380,8 @@ export default function App() {
     }
   }
 
-  // After processing: optimistically bump counts for queued photos, clear queue.
+  // After processing: optimistically bump counts for processed photos and clear
+  // only those from the queue (`queue` is the effective, possibly selection-scoped set).
   function handleProcessed(destination: "print" | "export", queue: Record<string, number>) {
     const bump = (p: Photo): Photo => {
       const qty = queue[p.id] ?? 0;
@@ -292,7 +396,11 @@ export default function App() {
         : prev
     );
     setActiveBatch((prev) => (prev ? { ...prev, photos: prev.photos.map(bump) } : prev));
-    setPhotoQueue({});
+    setPhotoQueue((prev) => {
+      const next = { ...prev };
+      for (const id of Object.keys(queue)) delete next[id];
+      return next;
+    });
   }
 
   function onDividerMouseDown(e: React.MouseEvent) {
@@ -322,13 +430,18 @@ export default function App() {
         activeBatch={activeBatch}
         queuedTotal={queuedTotal}
         allQty={allQty}
+        selectedCount={selectedIds.size}
         cellSize={cellSize}
+        hideEmpty={hideEmpty}
+        scanning={scanning}
         onOpenEvent={openEvent}
         onDeleteEvent={deleteEvent}
         onProcess={() => setModal("process")}
         onSettings={() => setModal("settings")}
         onSetAllQty={handleSetAllQty}
         onCellSizeChange={setCellSize}
+        onScanFaces={scanFaces}
+        onToggleHideEmpty={() => setHideEmpty((v) => !v)}
       />
 
       <div className="flex flex-1 overflow-hidden">
@@ -339,7 +452,7 @@ export default function App() {
             draggedBatchId={draggedBatchId}
             setDraggedBatchId={setDraggedBatchId}
             onAddBatch={addBatch}
-            onSelectBatch={(b) => { setActiveBatch(b); setSelected(null); setPhotoQueue(initQueueForBatch(b)); }}
+            onSelectBatch={(b) => { setActiveBatch(b); clearSelection(); setPhotoQueue(initQueueForBatch(b)); }}
             onDeleteBatch={deleteBatch}
             onReorderBatch={reorderBatch}
             draggedFrameId={draggedFrameId}
@@ -361,9 +474,10 @@ export default function App() {
         {event ? (
           <div className="flex flex-1 overflow-hidden">
             <Gallery
-              photos={photos}
+              photos={visiblePhotos}
               selectedId={selected?.id ?? null}
-              onSelect={setSelected}
+              selectedIds={selectedIds}
+              onPhotoClick={handlePhotoClick}
               photoQueue={photoQueue}
               onQtyDelta={adjustQty}
               cellSize={cellSize}
@@ -396,7 +510,7 @@ export default function App() {
       {modal === "process" && event && (
         <ProcessDialog
           event={event}
-          photoQueue={photoQueue}
+          photoQueue={effectiveQueue}
           onClose={() => setModal(null)}
           onEventUpdate={updateEvent}
           onProcessed={handleProcessed}

@@ -6,4 +6,5 @@ export const EVENTS = {
   LICENSE_EXPIRED: "license-expired",
   EXPORT_PROGRESS: "export-progress",
   EXPORT_COMPLETE: "export-complete",
+  FACE_SCAN_PROGRESS: "face-scan-progress",
 } as const;

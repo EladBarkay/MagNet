@@ -150,6 +150,7 @@ pub fn run() {
             commands::gallery::clear_orientation_override,
             commands::batch::export_batch,
             commands::batch::print_photos,
+            commands::faces::count_faces_in_batch,
             commands::canvas_preset::create_canvas_preset,
             commands::canvas_preset::update_canvas_preset,
             commands::canvas_preset::delete_canvas_preset,

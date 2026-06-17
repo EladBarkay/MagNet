@@ -14,4 +14,6 @@ pub mod events {
     pub const EXPORT_PROGRESS: &str = "export-progress";
     /// Export run finished. Payload: ExportComplete.
     pub const EXPORT_COMPLETE: &str = "export-complete";
+    /// Per-photo face-scan progress. Payload: FaceScanProgress.
+    pub const FACE_SCAN_PROGRESS: &str = "face-scan-progress";
 }
