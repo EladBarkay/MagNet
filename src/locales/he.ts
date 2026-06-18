@@ -83,9 +83,9 @@ const he = {
     portrait: "לאורך",
     frame: "מסגרת",
     none: "ללא",
-    exported: "ייצוא",
+    exported: "יוצא",
     notExported: "לא יוצא",
-    printed: "הדפסה",
+    printed: "הודפס",
     notPrinted: "לא הודפס",
   },
 
