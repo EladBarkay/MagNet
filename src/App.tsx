@@ -93,7 +93,12 @@ export default function App() {
 
   useFsWatcher(event, activeBatch, {
     onEvent: setEvent,
-    onActiveBatch: setActiveBatch,
+    onActiveBatch: (b) => {
+      setActiveBatch(b);
+      // Refresh the previewed photo too, so its new content_hash flows to the
+      // preview/thumbnail and they re-fetch after an on-disk edit/rotation.
+      setSelected((prev) => (prev ? (b.photos.find((p) => p.id === prev.id) ?? prev) : prev));
+    },
     onFrameChanged: () => setFrameNonce((n) => n + 1),
   });
 
@@ -259,7 +264,7 @@ export default function App() {
       const updated = await invoke<MagnetEvent>("add_batch", { eventId: event.id, folder });
       updateEvent(updated);
       const newBatch = updated.batches[updated.batches.length - 1];
-      if (newBatch) { setActiveBatch(newBatch); setPhotoQueue(initQueueForBatch(newBatch)); }
+      if (newBatch) setActiveBatch(newBatch); // seenIdsRef effect seeds its photos to qty 1
       clearSelection();
       setStatus("");
     } catch (e) {
@@ -512,7 +517,7 @@ export default function App() {
             draggedBatchId={draggedBatchId}
             setDraggedBatchId={setDraggedBatchId}
             onAddBatch={addBatch}
-            onSelectBatch={(b) => { setActiveBatch(b); clearSelection(); setPhotoQueue(initQueueForBatch(b)); }}
+            onSelectBatch={(b) => { setActiveBatch(b); clearSelection(); /* keep photoQueue; effect seeds new photos */ }}
             onDeleteBatch={deleteBatch}
             onReorderBatch={reorderBatch}
             draggedFrameId={draggedFrameId}
