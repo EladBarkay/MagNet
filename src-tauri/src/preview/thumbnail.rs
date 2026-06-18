@@ -14,15 +14,23 @@ impl ThumbnailCache {
         Ok(Self { cache_dir })
     }
 
-    fn cache_key(photo_path: &Path) -> String {
-        let meta = std::fs::metadata(photo_path).ok();
-        let mtime = meta
-            .and_then(|m| m.modified().ok())
-            .map(|t| format!("{:?}", t))
-            .unwrap_or_default();
+    /// Cache key. Prefer the caller's content hash (busts on any byte change —
+    /// EXIF-only rotations included, even when the editor preserves mtime).
+    /// Falls back to path + mtime when no hash is supplied.
+    fn cache_key(photo_path: &Path, content_hash: Option<&str>) -> String {
         let mut hasher = Sha256::new();
         hasher.update(photo_path.to_string_lossy().as_bytes());
-        hasher.update(mtime.as_bytes());
+        match content_hash {
+            Some(h) => hasher.update(h.as_bytes()),
+            None => {
+                let mtime = std::fs::metadata(photo_path)
+                    .ok()
+                    .and_then(|m| m.modified().ok())
+                    .map(|t| format!("{:?}", t))
+                    .unwrap_or_default();
+                hasher.update(mtime.as_bytes());
+            }
+        }
         format!("{:x}", hasher.finalize())
     }
 
@@ -30,8 +38,8 @@ impl ThumbnailCache {
         self.cache_dir.join(format!("{}.jpg", key))
     }
 
-    pub fn get_or_generate(&self, photo_path: &Path) -> Result<Vec<u8>> {
-        let key = Self::cache_key(photo_path);
+    pub fn get_or_generate(&self, photo_path: &Path, content_hash: Option<&str>) -> Result<Vec<u8>> {
+        let key = Self::cache_key(photo_path, content_hash);
         let path = self.thumb_path(&key);
         if path.exists() {
             return std::fs::read(&path).context("reading cached thumbnail");
@@ -52,8 +60,4 @@ impl ThumbnailCache {
         Ok(buf)
     }
 
-    pub fn invalidate(&self, photo_path: &Path) {
-        let key = Self::cache_key(photo_path);
-        let _ = std::fs::remove_file(self.thumb_path(&key));
-    }
 }

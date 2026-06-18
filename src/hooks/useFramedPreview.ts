@@ -5,7 +5,9 @@ export function useFramedPreview(
   eventId: string | null,
   photoId: string | null,
   presetId: string | null,
-  nonce: number = 0
+  nonce: number = 0,
+  // Changes when the photo's bytes change on disk, forcing a re-fetch.
+  contentHash?: string
 ): string | null {
   const [src, setSrc] = useState<string | null>(null);
 
@@ -36,7 +38,7 @@ export function useFramedPreview(
     return () => {
       cancelled = true;
     };
-  }, [eventId, photoId, presetId, nonce]);
+  }, [eventId, photoId, presetId, nonce, contentHash]);
 
   return src;
 }

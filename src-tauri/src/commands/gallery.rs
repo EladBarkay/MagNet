@@ -7,10 +7,11 @@ use crate::AppState;
 #[tauri::command]
 pub async fn get_thumbnail(
     photo_path: String,
+    content_hash: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Vec<u8>, String> {
     let path = std::path::PathBuf::from(&photo_path);
-    state.thumbs.get_or_generate(&path).tauri()
+    state.thumbs.get_or_generate(&path, content_hash.as_deref()).tauri()
 }
 
 #[tauri::command]

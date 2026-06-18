@@ -26,7 +26,7 @@ export function useThumbnail(photoPath: string, contentHash?: string): string | 
 
     const pending =
       inflight.get(key) ??
-      invoke<number[]>("get_thumbnail", { photoPath }).then((bytes) => {
+      invoke<number[]>("get_thumbnail", { photoPath, contentHash }).then((bytes) => {
         const url = URL.createObjectURL(
           new Blob([new Uint8Array(bytes)], { type: "image/jpeg" })
         );

@@ -31,7 +31,8 @@ export default function PreviewPanel({ event, photo, onClose, frameNonce, onOrie
     event.id,
     photo.id,
     previewFrameId,
-    frameNonce
+    frameNonce,
+    photo.content_hash
   );
 
   const displaySrc = framedSrc ?? thumb;
