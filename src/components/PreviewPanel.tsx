@@ -119,15 +119,15 @@ export default function PreviewPanel({ event, photo, onClose, frameNonce, onOrie
           </div>
         )}
         <div className="flex items-center justify-between">
-          <span>{t("preview.exported")}</span>
+          <span>{t("preview.saved")}</span>
           <span
             className={
-              photo.export_count > 0
+              photo.save_count > 0
                 ? "font-semibold text-blue-400"
                 : "text-neutral-600"
             }
           >
-            {photo.export_count === 0 ? t("preview.notExported") : `⬇${photo.export_count}`}
+            {photo.save_count === 0 ? t("preview.notSaved") : `⬇${photo.save_count}`}
           </span>
         </div>
         <div className="flex items-center justify-between">

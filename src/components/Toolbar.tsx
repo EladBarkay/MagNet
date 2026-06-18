@@ -2,7 +2,6 @@ import { useTranslation } from "react-i18next";
 import { Entitlement, MagnetEvent } from "../types";
 import { PrintIcon, SettingsIcon, TrashIcon } from "./icons";
 import { tierLabel, tierColor } from "../lib/tiers";
-import { QtyButton } from "./ui";
 
 type Props = {
   event: MagnetEvent | null;
@@ -10,17 +9,15 @@ type Props = {
   status: string;
   totalPhotos: number;
   queuedTotal: number;
-  cellSize: number;
   onOpenEvent: () => void;
   onDeleteEvent: () => void;
-  onProcess: () => void;
+  onExport: () => void;
   onSettings: () => void;
-  onCellSizeChange: (size: number) => void;
 };
 
 export default function Toolbar({
-  event, entitlement, status, totalPhotos, queuedTotal, cellSize,
-  onOpenEvent, onDeleteEvent, onProcess, onSettings, onCellSizeChange,
+  event, entitlement, status, totalPhotos, queuedTotal,
+  onOpenEvent, onDeleteEvent, onExport, onSettings,
 }: Props) {
   const { t } = useTranslation();
   const tier = entitlement?.tier ?? "free";
@@ -48,21 +45,14 @@ export default function Toolbar({
           </button>
 
           <div className="ms-auto flex items-center gap-3">
-            {/* Gallery cell size */}
-            <div className="flex items-center gap-1">
-              <span className="text-xs text-neutral-500">{t("toolbar.size")}</span>
-              <QtyButton size="sm" label="−" onClick={() => onCellSizeChange(Math.max(100, cellSize - 20))} disabled={cellSize <= 100} />
-              <QtyButton size="sm" label="+" onClick={() => onCellSizeChange(Math.min(280, cellSize + 20))} disabled={cellSize >= 280} />
-            </div>
-
             <button
-              onClick={onProcess}
+              onClick={onExport}
               disabled={queuedTotal === 0}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed rounded text-sm font-medium transition-colors"
               title={queuedTotal === 0 ? t("toolbar.setQuantitiesFirst") : ""}
             >
               <PrintIcon />
-              {queuedTotal > 0 ? t("toolbar.processCount", { count: queuedTotal }) : t("toolbar.process")}
+              {queuedTotal > 0 ? t("toolbar.exportCount", { count: queuedTotal }) : t("toolbar.export")}
             </button>
           </div>
         </>

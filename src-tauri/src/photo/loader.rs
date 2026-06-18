@@ -101,7 +101,7 @@ pub fn scan_photo(path: PathBuf) -> Result<Photo> {
         orientation_override: None,
         crop_override: None,
         print_count: 0,
-        export_count: 0,
+        save_count: 0,
         content_hash,
     })
 }

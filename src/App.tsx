@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import Gallery from "./components/Gallery";
 import PreviewPanel from "./components/PreviewPanel";
-import ProcessDialog from "./components/ProcessDialog";
+import ExportDialog from "./components/ExportDialog";
 import FramePresetDialog from "./components/FramePresetDialog";
 import SettingsDialog from "./components/SettingsDialog";
 import CanvasPresetForm from "./components/CanvasPresetForm";
@@ -20,7 +20,7 @@ import { rangeIds } from "./lib/selection";
 import { EVENTS } from "./constants";
 import { MagnetEvent, Orientation, Photo, PhotoBatch, FramePreset, CanvasPreset, Entitlement } from "./types";
 
-type ModalKind = "process" | "addFrame" | "addCanvas" | "settings" | null;
+type ModalKind = "export" | "addFrame" | "addCanvas" | "settings" | null;
 
 export default function App() {
   const { t } = useTranslation();
@@ -70,6 +70,28 @@ export default function App() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
+  }, []);
+
+  // Gallery cell size via Ctrl+Plus/Minus and Ctrl+wheel (clamp 100–280, step 20).
+  useEffect(() => {
+    const bump = (dir: number) =>
+      setCellSize((c) => Math.min(280, Math.max(100, c + dir * 20)));
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      if (["+", "=", "Add"].includes(e.key)) { e.preventDefault(); bump(1); }
+      else if (["-", "_", "Subtract"].includes(e.key)) { e.preventDefault(); bump(-1); }
+    };
+    const onWheel = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault(); // suppress webview page zoom
+      bump(e.deltaY < 0 ? 1 : -1);
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("wheel", onWheel);
+    };
   }, []);
 
   useEffect(() => {
@@ -455,15 +477,15 @@ export default function App() {
     }
   }
 
-  // After processing: optimistically bump counts for processed photos and clear
+  // After exporting: optimistically bump counts for processed photos and clear
   // only those from the queue (`queue` is the effective, possibly selection-scoped set).
-  function handleProcessed(destination: "print" | "export", queue: Record<string, number>) {
+  function handleExported(destination: "print" | "save", queue: Record<string, number>) {
     const bump = (p: Photo): Photo => {
       const qty = queue[p.id] ?? 0;
       if (!qty) return p;
       return destination === "print"
         ? { ...p, print_count: p.print_count + qty }
-        : { ...p, export_count: p.export_count + qty };
+        : { ...p, save_count: p.save_count + qty };
     };
     setEvent((prev) =>
       prev
@@ -507,12 +529,10 @@ export default function App() {
         status={status}
         totalPhotos={totalPhotos}
         queuedTotal={queuedTotal}
-        cellSize={cellSize}
         onOpenEvent={openEvent}
         onDeleteEvent={deleteEvent}
-        onProcess={() => setModal("process")}
+        onExport={() => setModal("export")}
         onSettings={() => setModal("settings")}
-        onCellSizeChange={setCellSize}
       />
 
       <div className="flex flex-1 overflow-hidden">
@@ -597,13 +617,13 @@ export default function App() {
       </div>
 
       {/* Modals */}
-      {modal === "process" && event && (
-        <ProcessDialog
+      {modal === "export" && event && (
+        <ExportDialog
           event={event}
           photoQueue={effectiveQueue}
           onClose={() => setModal(null)}
           onEventUpdate={updateEvent}
-          onProcessed={handleProcessed}
+          onExported={handleExported}
         />
       )}
       {modal === "addFrame" && event && (

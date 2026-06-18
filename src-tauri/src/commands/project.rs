@@ -213,7 +213,7 @@ mod tests {
             orientation_override: None,
             crop_override: None,
             print_count: 5,
-            export_count: 0,
+            save_count: 0,
             content_hash: hash.to_string(),
         }
     }

@@ -1,4 +1,4 @@
-//! Image primitives shared by the export/print hot path and the preview path.
+//! Image primitives shared by the save/print hot path and the preview path.
 //!
 //! Each function keeps a fast implementation AND the simple `image`-crate
 //! fallback in one body, so swapping the fast path for the slow-but-simple one

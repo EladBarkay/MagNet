@@ -10,20 +10,20 @@ use crate::project::model::{CanvasPreset, Event, FramePreset, Photo};
 use crate::AppState;
 
 #[derive(Serialize, Clone)]
-struct ExportProgress {
+struct SaveProgress {
     done: usize,
     total: usize,
     current_file: String,
 }
 
 #[derive(Serialize, Clone)]
-struct ExportComplete {
+struct SaveComplete {
     errors: Vec<String>,
     output_dir: String,
 }
 
 /// Open both frame PNGs and pre-resize/convert them for a given slot — done once
-/// per export/print run so the per-photo hot path does no frame I/O or conversion.
+/// per save/print run so the per-photo hot path does no frame I/O or conversion.
 fn load_and_prepare_frames(
     preset: &FramePreset,
     slot_w: u32,
@@ -69,8 +69,8 @@ fn collect_selected(event: &Event, quantities: &HashMap<Uuid, u32>) -> Vec<Photo
         .collect()
 }
 
-/// Everything an export/print run needs once the event is loaded — shared by both
-/// `export_batch` and `print_photos`, which differ only in how they emit output.
+/// Everything a save/print run needs once the event is loaded — shared by both
+/// `save_batch` and `print_photos`, which differ only in how they emit output.
 struct PreparedBatch {
     photos: Vec<Photo>,
     canvas_preset: CanvasPreset,
@@ -121,7 +121,7 @@ fn bump_counts(event: &mut Event, quantities: &HashMap<Uuid, u32>, field: fn(&mu
 }
 
 #[tauri::command]
-pub async fn export_batch(
+pub async fn save_batch(
     event_id: Uuid,
     quantities: HashMap<Uuid, u32>,
     frame_preset_id: Uuid,
@@ -178,13 +178,13 @@ pub async fn export_batch(
                     canvas = crate::canvas::compositor::apply_watermark(&canvas);
                 }
                 let out_path = output_dir_clone.join(&filename);
-                if let Err(e) = crate::photo::export::export_print_ready(&canvas, &out_path) {
+                if let Err(e) = crate::photo::encode::write_print_ready(&canvas, &out_path) {
                     errs.push(format!("{filename}: {e}"));
                 }
             }
 
             let d = done.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
-            let _ = app.emit(crate::constants::events::EXPORT_PROGRESS, ExportProgress {
+            let _ = app.emit(crate::constants::events::SAVE_PROGRESS, SaveProgress {
                 done: d,
                 total: total_canvases,
                 current_file: filename,
@@ -200,13 +200,13 @@ pub async fn export_batch(
                 .collect()
         });
 
-        // Increment export_count for all exported photos
+        // Increment save_count for all saved photos
         if let Ok(mut evt) = store.load(event_id) {
-            bump_counts(&mut evt, &quantities, |p| &mut p.export_count);
+            bump_counts(&mut evt, &quantities, |p| &mut p.save_count);
             let _ = store.save(&evt);
         }
 
-        let _ = app.emit(crate::constants::events::EXPORT_COMPLETE, ExportComplete {
+        let _ = app.emit(crate::constants::events::SAVE_COMPLETE, SaveComplete {
             errors,
             output_dir: output_dir_clone.to_string_lossy().into_owned(),
         });
@@ -249,7 +249,7 @@ pub async fn print_photos(
     let mut paths: Vec<PathBuf> = Vec::new();
     for (i, canvas) in canvases.iter().enumerate() {
         let p = tmp_dir.join(format!("print_{i:04}.jpg"));
-        crate::photo::export::export_print_ready(canvas, &p).tauri()?;
+        crate::photo::encode::write_print_ready(canvas, &p).tauri()?;
         paths.push(p);
     }
 

@@ -10,10 +10,10 @@ pub mod events {
     pub const TIER_CHANGED: &str = "tier-changed";
     /// Offline grace lapsed; downgraded to Free. Payload: ().
     pub const LICENSE_EXPIRED: &str = "license-expired";
-    /// Per-canvas export progress. Payload: ExportProgress.
-    pub const EXPORT_PROGRESS: &str = "export-progress";
-    /// Export run finished. Payload: ExportComplete.
-    pub const EXPORT_COMPLETE: &str = "export-complete";
+    /// Per-canvas save progress. Payload: SaveProgress.
+    pub const SAVE_PROGRESS: &str = "save-progress";
+    /// Save run finished. Payload: SaveComplete.
+    pub const SAVE_COMPLETE: &str = "save-complete";
     /// Per-photo face-scan progress. Payload: FaceScanProgress.
     pub const FACE_SCAN_PROGRESS: &str = "face-scan-progress";
 }

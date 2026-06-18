@@ -81,7 +81,7 @@ MagNet/
 │   │   ├── useThumbnail.ts         # Fetch + cache 256px thumbnail (keyed on content_hash)
 │   │   ├── useFramedPreview.ts     # Fetch 1200px framed preview on demand
 │   │   ├── useFsWatcher.ts         # Listen for `fs-changed` Tauri events
-│   │   ├── useExportProgress.ts    # Subscribe to `export-progress` Tauri events
+│   │   ├── useSaveProgress.ts      # Subscribe to `save-progress` Tauri events
 │   │   └── useAuthDeepLink.ts      # Handle magnet://auth-callback OAuth deep link
 │   └── lib/
 │       ├── paths.ts            # basename(), batchDisplayPath() helpers
@@ -95,7 +95,7 @@ MagNet/
 │   │   ├── commands/           # Thin Tauri IPC handlers — no business logic
 │   │   │   ├── project.rs      # open/create/save/delete event, batches, refresh_batch, sync_watches
 │   │   │   ├── gallery.rs      # list_photos, get_thumbnail, get_framed_preview, orientation/crop overrides
-│   │   │   ├── batch.rs        # export_batch, print_photos (watermark per tier)
+│   │   │   ├── batch.rs        # save_batch, print_photos (watermark per tier)
 │   │   │   ├── canvas_preset.rs
 │   │   │   ├── frame_preset.rs
 │   │   │   └── auth.rs         # establish_session, get_entitlement, sign_out
@@ -104,8 +104,8 @@ MagNet/
 │   │   │   ├── orientation.rs  # detect_orientation() — pixel dims + user override
 │   │   │   ├── crop.rs         # compute_crop_rect() (center + rule-of-thirds), apply_crop()
 │   │   │   ├── frame.rs        # apply_frame_overlay() — RGBA alpha-composite over RGB
-│   │   │   ├── export.rs       # export_print_ready() — JPEG q95 at 300 DPI
-│   │   │   └── batch.rs        # frame_photo_for_canvas() — per-photo export/print path
+│   │   │   ├── encode.rs       # write_print_ready() — JPEG q95 at 300 DPI
+│   │   │   └── batch.rs        # frame_photo_for_canvas() — per-photo save/print path
 │   │   ├── canvas/
 │   │   │   └── compositor.rs   # Tile framed photos onto canvas + apply_watermark() (Free tier)
 │   │   ├── project/
@@ -163,7 +163,7 @@ Event
                     ├── exif_orientation, orientation_override
                     ├── content_hash   ← SHA-256(photo bytes + XMP); resets print_count on change
                     ├── print_count
-                    └── export_count
+                    └── save_count
 ```
 
 `FramePreset` stores absolute paths to two PNGs (landscape + portrait orientation variants), the target aspect ratio, and the crop method (center or rule-of-thirds).
@@ -179,7 +179,7 @@ Event
 5. `blend_rgba_over_rgb()` — alpha-composite frame PNG over photo, in-place
 6. Rotate 90° if that better fills the canvas slot
 7. Compositor centers the result — white letterbox padding, never stretched
-8. `export_print_ready()` — JPEG q95, 300 DPI JFIF
+8. `write_print_ready()` — JPEG q95, 300 DPI JFIF
 
 Batch runs on a **4-thread rayon pool** (memory ceiling ~400 MB for 24 MP photos). Per-photo errors are logged and skipped; the rest of the batch continues. Progress is emitted via Tauri events.
 

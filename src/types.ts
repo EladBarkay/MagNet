@@ -16,7 +16,7 @@ export type Photo = {
   orientation_override: Orientation | null;
   crop_override: CropRect | null;
   print_count: number;
-  export_count: number;
+  save_count: number;
   content_hash: string;
 };
 

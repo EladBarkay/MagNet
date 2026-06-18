@@ -10,7 +10,7 @@ use crate::project::model::Event;
 /// Constructed once at app startup from `app.path().app_data_dir()` and held in Tauri state.
 ///
 /// Keeps an in-memory cache so hot paths (`list_photos`, `get_framed_preview`,
-/// export/print) don't re-read and re-parse JSON from disk on every call. The
+/// save/print) don't re-read and re-parse JSON from disk on every call. The
 /// disk file remains the source of truth and is always written on `save`.
 #[derive(Clone)]
 pub struct EventStore {

@@ -39,7 +39,7 @@ When opening a folder, the app matches it against `source_path` in existing `mag
 
 - **Event** — top-level: name, list of `PhotoBatch`es, active `FramePreset`, `CanvasPreset`s, output folder path
 - **PhotoBatch** — absolute `source_path` to photographer's folder, list of `Photo`s
-- **Photo** — path, EXIF orientation, user overrides (orientation, crop), `print_count`, `export_count`, `content_hash` (SHA-256 of photo + XMP bytes — resets `print_count` when it changes)
+- **Photo** — path, EXIF orientation, user overrides (orientation, crop), `print_count`, `save_count`, `content_hash` (SHA-256 of photo + XMP bytes — resets `print_count` when it changes; `save_count` persists)
 - **FramePreset** — absolute paths to landscape + portrait PNG (alpha), target ratio (crop is always centered)
 - **CanvasPreset** — pixel dimensions, photos-per-canvas, DPI, grid layout (e.g. 2400×1600, 2-up)
 
@@ -58,7 +58,7 @@ aspect preserved, RGBA8). Per photo, `frame_photo_for_canvas()`:
 5. `imageops::overlay_frame()` → frame composite (in-place RGB8 fast path, else `image::imageops::overlay`)
 6. Rotate 90° if that fills the slot better (landscape photo in portrait slot)
 7. Compositor centers the result in its slot — white letterbox, **never stretched**
-8. `export_print_ready(framed, out_path)` → RGB JPEG q95 at 300 DPI
+8. `write_print_ready(framed, out_path)` → RGB JPEG q95 at 300 DPI
 
 Errors per photo: log and skip; batch continues. Progress emitted via Tauri events.
 Perf guard: `cargo test --release -- --ignored perf` asserts <100ms/photo (24MP source).
@@ -106,7 +106,7 @@ magnet/
 │   │   ├── commands/          # Thin Tauri IPC handlers
 │   │   │   ├── project.rs     # open/create/save/delete event, batches, refresh_batch, sync_watches, open_in_explorer
 │   │   │   ├── gallery.rs     # list_photos, get_thumbnail, get_framed_preview, overrides (preview IPC lives here)
-│   │   │   ├── batch.rs       # export_batch, print_photos (watermark per tier)
+│   │   │   ├── batch.rs       # save_batch, print_photos (watermark per tier)
 │   │   │   ├── canvas_preset.rs  # list/create/update/delete_canvas_preset
 │   │   │   ├── frame_preset.rs   # list/create/update/delete_frame_preset
 │   │   │   └── auth.rs        # establish_session, get_entitlement, sign_out
@@ -116,8 +116,8 @@ magnet/
 │   │   │   ├── crop.rs        # compute_crop_rect() (always centered), apply_crop() [tests]
 │   │   │   ├── imageops.rs    # crop_and_resize() + overlay_frame() — fast path + simple fallback per fn [tests]
 │   │   │   ├── frame.rs       # apply_frame_overlay() — load frame PNG + overlay_frame() (preview path) [tests]
-│   │   │   ├── export.rs      # export_print_ready() — RGB JPEG q95, 300 DPI JFIF
-│   │   │   └── batch.rs       # frame_photo_for_canvas() (export/print per-photo path)
+│   │   │   ├── encode.rs      # write_print_ready() — RGB JPEG q95, 300 DPI JFIF
+│   │   │   └── batch.rs       # frame_photo_for_canvas() (save/print per-photo path)
 │   │   ├── canvas/            # compositor.rs — tile + apply_watermark() (procedural, free tier)
 │   │   ├── project/           # model.rs + persistence.rs (serde_json, in-memory cache) [tests]
 │   │   ├── preview/           # thumbnail.rs (256px disk cache) + framed_preview.rs (1200px; preset=None → raw full photo, no crop/frame)
@@ -128,8 +128,8 @@ magnet/
 │   ├── components/            # flat (no nested folders)
 │   │   ├── Gallery.tsx        # react-window FixedSizeGrid virtual grid
 │   │   ├── PhotoCard.tsx      # thumbnail tile + qty stepper (bottom overlay, default 1)
-│   │   ├── PreviewPanel.tsx   # framed preview + orientation override + export/print counts
-│   │   ├── ProcessDialog.tsx  # export/print config: frame+canvas preset pickers, progress bar
+│   │   ├── PreviewPanel.tsx   # framed preview + orientation override + save/print counts
+│   │   ├── ExportDialog.tsx   # print/save config: frame+canvas preset pickers, progress bar
 │   │   ├── FramePresetDialog.tsx   # create/edit frame preset
 │   │   ├── CanvasPresetForm.tsx    # create/edit canvas preset (used by manager)
 │   │   ├── CanvasPresetManager.tsx # list/edit/delete canvas presets
@@ -137,20 +137,21 @@ magnet/
 │   │   ├── EmptyState.tsx          # empty gallery placeholder
 │   │   ├── icons.tsx               # SVG icon components
 │   │   └── ui.tsx                  # shared Modal and primitive UI components
-│   ├── hooks/                 # useThumbnail.ts, useFramedPreview.ts, useFsWatcher.ts, useExportProgress.ts, useAuthDeepLink.ts
+│   ├── hooks/                 # useThumbnail.ts, useFramedPreview.ts, useFsWatcher.ts, useSaveProgress.ts, useAuthDeepLink.ts
 │   ├── lib/                   # supabase.ts (client), auth.ts (establishFromSession → Rust)
 │   ├── i18n.ts                # i18next setup (en + he), LANGS, setLanguage(), syncs <html lang/dir>
 │   └── locales/              # en.ts (source-of-truth dictionary) + he.ts (Hebrew, RTL)
 └── package.json
 ```
 
-### Print / Export flow (current)
+### Export flow (current)
 
 Per-photo quantities are set via the qty stepper at the **bottom of each gallery card** (default 1).
 All quantities live in `App.photoQueue: Record<string, number>` — a unified session-only state for
-both print and export. The toolbar **Print/Export** button opens `ProcessDialog` to pick a frame
-preset + canvas preset, then calls `print_photos` or `export_batch`. After completion, `print_count`
-/ `export_count` on each Photo is bumped optimistically and the queue is cleared. Actual printer
+both print and save. The toolbar **Export** button opens `ExportDialog` to pick a frame
+preset + canvas preset and a destination (Print or Save to path), then calls `print_photos` or
+`save_batch`. After completion, `print_count` / `save_count` on each Photo is bumped optimistically
+and the queue is cleared. Actual printer
 submission is deferred — files go to a temp dir, OS printer dialog is not yet wired.
 
 ### Auth & Entitlements (current)
@@ -177,7 +178,7 @@ downgrades to Free once `expires_at` passes.
 a synthetic `AuthState` (sentinel refresh token `dev-bypass`); the refresh loop
 skips it. No sign-in, no network.
 
-`AppState::tier()` gates watermarking in `export_batch`/`print_photos`. Free tier
+`AppState::tier()` gates watermarking in `save_batch`/`print_photos`. Free tier
 composites a procedural diagonal-stripe watermark (no bundled asset/font).
 
 Supabase project config lives in a single repo-root `.env`

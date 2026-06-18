@@ -5,7 +5,7 @@ use image::DynamicImage;
 const PRINT_DPI: u16 = 300;
 
 /// Write a framed image as RGB JPEG with 300 DPI metadata.
-pub fn export_print_ready(image: &DynamicImage, output_path: &Path) -> Result<()> {
+pub fn write_print_ready(image: &DynamicImage, output_path: &Path) -> Result<()> {
     if let Some(parent) = output_path.parent() {
         std::fs::create_dir_all(parent)?;
     }

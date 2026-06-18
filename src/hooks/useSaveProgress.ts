@@ -2,26 +2,26 @@ import { useState, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { EVENTS } from "../constants";
 
-export type ExportProgress = {
+export type SaveProgress = {
   done: number;
   total: number;
   current_file: string;
 };
 
-export type ExportResult = {
+export type SaveResult = {
   errors: string[];
   output_dir: string;
 };
 
-export function useExportProgress() {
-  const [progress, setProgress] = useState<ExportProgress | null>(null);
-  const [result, setResult] = useState<ExportResult | null>(null);
+export function useSaveProgress() {
+  const [progress, setProgress] = useState<SaveProgress | null>(null);
+  const [result, setResult] = useState<SaveResult | null>(null);
 
   useEffect(() => {
-    const p = listen<ExportProgress>(EVENTS.EXPORT_PROGRESS, (e) =>
+    const p = listen<SaveProgress>(EVENTS.SAVE_PROGRESS, (e) =>
       setProgress(e.payload)
     );
-    const c = listen<ExportResult>(EVENTS.EXPORT_COMPLETE, (e) => {
+    const c = listen<SaveResult>(EVENTS.SAVE_COMPLETE, (e) => {
       setProgress(null);
       setResult(e.payload);
     });

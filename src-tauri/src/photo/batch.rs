@@ -4,7 +4,7 @@ use crate::project::model::{FramePreset, Orientation, Photo};
 use crate::photo::{loader, crop, imageops};
 
 /// Frames pre-resized to their final placement dimensions and pre-converted
-/// to RGBA8 — prepared **once** per export/print run so the per-photo hot path
+/// to RGBA8 — prepared **once** per save/print run so the per-photo hot path
 /// does zero frame decoding, resizing, or buffer conversion.
 pub struct PreparedFrames {
     pub landscape: RgbaImage,
@@ -140,7 +140,7 @@ mod tests {
             orientation_override: None,
             crop_override: None,
             print_count: 0,
-            export_count: 0,
+            save_count: 0,
             content_hash: String::new(),
         }
     }
