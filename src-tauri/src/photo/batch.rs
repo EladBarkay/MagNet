@@ -1,7 +1,7 @@
 use anyhow::Result;
 use image::{DynamicImage, RgbaImage};
-use crate::project::model::{CropRect, FramePreset, Orientation, Photo};
-use crate::photo::{loader, crop, frame};
+use crate::project::model::{FramePreset, Orientation, Photo};
+use crate::photo::{loader, crop, imageops};
 
 /// Frames pre-resized to their final placement dimensions and pre-converted
 /// to RGBA8 — prepared **once** per export/print run so the per-photo hot path
@@ -82,9 +82,9 @@ pub fn prepare_frames(
 
 /// Frame a photo for canvas placement:
 /// 1. decode photo
-/// 2. crop to the orientation-correct target ratio (portrait gets the inverted ratio)
+/// 2. crop (centered) to the orientation-correct target ratio (portrait gets the inverted ratio)
 /// 3. downscale (aspect-true) to the slot placement dimensions
-/// 4. overlay the matching pre-prepared frame (no per-photo resize/convert)
+/// 4. overlay the matching pre-prepared frame
 /// 5. rotate 90° when that fills the slot better (frame rotates with the photo)
 ///
 /// The result is never stretched; the compositor centers it in the slot.
@@ -105,77 +105,11 @@ pub fn frame_photo_for_canvas(
     };
 
     let crop_rect = photo.crop_override.unwrap_or_else(|| {
-        crop::compute_crop_rect(
-            loaded.width(),
-            loaded.height(),
-            ratio,
-            preset.crop_method,
-        )
+        crop::compute_crop_rect(loaded.width(), loaded.height(), ratio)
     });
-    // SIMD crop+resize in one pass (no intermediate full-res copy). Falls back
-    // to the image-crate path for uncommon pixel formats (e.g. 16-bit TIFF).
-    let scaled = fast_crop_resize(&loaded, crop_rect, target_w, target_h)
-        .unwrap_or_else(|| {
-            let cropped = crop::apply_crop(&loaded, crop_rect);
-            cropped.resize_exact(target_w, target_h, image::imageops::FilterType::Triangle)
-        });
-    // JPEG decodes are RGB8 → blend in place, no RGBA round-trip. Other pixel
-    // formats take the generic overlay path.
-    let framed = match scaled {
-        DynamicImage::ImageRgb8(mut rgb)
-            if frame_img.dimensions() == (rgb.width(), rgb.height()) =>
-        {
-            frame::blend_rgba_over_rgb(&mut rgb, frame_img);
-            DynamicImage::ImageRgb8(rgb)
-        }
-        other => frame::apply_frame_overlay_prepared(&other, frame_img),
-    };
+    let scaled = imageops::crop_and_resize(&loaded, crop_rect, target_w, target_h);
+    let framed = imageops::overlay_frame(&scaled, frame_img);
     Ok(if rotate { framed.rotate90() } else { framed })
-}
-
-/// Crop + downscale in a single SIMD pass via `fast_image_resize`.
-/// Returns `None` for pixel formats outside the fast path (caller falls back).
-fn fast_crop_resize(
-    img: &DynamicImage,
-    rect: CropRect,
-    target_w: u32,
-    target_h: u32,
-) -> Option<DynamicImage> {
-    use fast_image_resize as fir;
-
-    let (pixel_type, bytes, w, h) = match img {
-        DynamicImage::ImageRgb8(b) => {
-            (fir::PixelType::U8x3, b.as_raw().as_slice(), b.width(), b.height())
-        }
-        DynamicImage::ImageRgba8(b) => {
-            (fir::PixelType::U8x4, b.as_raw().as_slice(), b.width(), b.height())
-        }
-        DynamicImage::ImageLuma8(b) => {
-            (fir::PixelType::U8, b.as_raw().as_slice(), b.width(), b.height())
-        }
-        _ => return None,
-    };
-
-    let src = fir::images::ImageRef::new(w, h, bytes, pixel_type).ok()?;
-    let mut dst = fir::images::Image::new(target_w, target_h, pixel_type);
-    let mut resizer = fir::Resizer::new();
-    let opts = fir::ResizeOptions::new()
-        .crop(rect.x as f64, rect.y as f64, rect.width as f64, rect.height as f64)
-        .resize_alg(fir::ResizeAlg::Convolution(fir::FilterType::Bilinear));
-    resizer.resize(&src, &mut dst, &Some(opts)).ok()?;
-
-    match pixel_type {
-        fir::PixelType::U8x3 => {
-            image::RgbImage::from_raw(target_w, target_h, dst.into_vec())
-                .map(DynamicImage::ImageRgb8)
-        }
-        fir::PixelType::U8x4 => {
-            image::RgbaImage::from_raw(target_w, target_h, dst.into_vec())
-                .map(DynamicImage::ImageRgba8)
-        }
-        _ => image::GrayImage::from_raw(target_w, target_h, dst.into_vec())
-            .map(DynamicImage::ImageLuma8),
-    }
 }
 
 #[cfg(test)]
@@ -184,7 +118,6 @@ mod tests {
     use std::path::PathBuf;
     use image::Rgba;
     use uuid::Uuid;
-    use crate::project::model::CropMethod;
 
     fn test_preset() -> FramePreset {
         FramePreset {
@@ -194,7 +127,6 @@ mod tests {
             portrait_frame_path: PathBuf::new(),
             target_ratio_w: 3.0,
             target_ratio_h: 2.0,
-            crop_method: CropMethod::Center,
         }
     }
 
@@ -347,20 +279,14 @@ mod tests {
         let orient = photo.effective_orientation();
         let ratio = orientation_ratio(&preset, orient);
         let (tw, th, rotate) = placement(&preset, orient, 1200, 1600);
-        let rect = crop::compute_crop_rect(6000, 4000, ratio, CropMethod::Center);
+        let rect = crop::compute_crop_rect(6000, 4000, ratio);
 
         let t = std::time::Instant::now();
-        let scaled = fast_crop_resize(&loaded, rect, tw, th).unwrap();
+        let scaled = imageops::crop_and_resize(&loaded, rect, tw, th);
         println!("crop+resize:   {:?}", t.elapsed());
 
         let t = std::time::Instant::now();
-        let framed = match scaled {
-            DynamicImage::ImageRgb8(mut rgb) => {
-                frame::blend_rgba_over_rgb(&mut rgb, &frames.landscape);
-                DynamicImage::ImageRgb8(rgb)
-            }
-            other => frame::apply_frame_overlay_prepared(&other, &frames.landscape),
-        };
+        let framed = imageops::overlay_frame(&scaled, &frames.landscape);
         println!("overlay:       {:?}", t.elapsed());
 
         let t = std::time::Instant::now();

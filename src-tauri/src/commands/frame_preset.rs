@@ -3,7 +3,7 @@ use serde::Deserialize;
 use tauri::State;
 use uuid::Uuid;
 use crate::commands::IntoTauri;
-use crate::project::model::{CropMethod, FramePreset};
+use crate::project::model::FramePreset;
 use crate::AppState;
 
 #[derive(Deserialize)]
@@ -13,7 +13,6 @@ pub struct FramePresetInput {
     pub portrait_frame_path: PathBuf,
     pub target_ratio_w: f32,
     pub target_ratio_h: f32,
-    pub crop_method: CropMethod,
 }
 
 impl FramePresetInput {
@@ -25,7 +24,6 @@ impl FramePresetInput {
             portrait_frame_path: self.portrait_frame_path,
             target_ratio_w: self.target_ratio_w,
             target_ratio_h: self.target_ratio_h,
-            crop_method: self.crop_method,
         }
     }
 

@@ -17,19 +17,24 @@ pub async fn get_thumbnail(
 pub async fn get_framed_preview(
     event_id: Uuid,
     photo_id: Uuid,
-    preset_id: Uuid,
+    preset_id: Option<Uuid>,
     state: State<'_, AppState>,
 ) -> Result<Vec<u8>, String> {
-    // Check in-memory cache first.
-    if let Some(cached) = state.preview_cache.lock().unwrap().get(&(photo_id, preset_id)).cloned() {
+    // `None` preset → raw full-photo preview; keyed under the nil UUID so it
+    // shares the same cache without a separate map.
+    let cache_key = (photo_id, preset_id.unwrap_or_else(Uuid::nil));
+    if let Some(cached) = state.preview_cache.lock().unwrap().get(&cache_key).cloned() {
         return Ok(cached);
     }
     let event = state.store.load(event_id).tauri()?;
     let photo = event.find_photo(photo_id)?;
-    let preset = event.find_frame_preset(preset_id)?;
+    let preset = match preset_id {
+        Some(pid) => Some(event.find_frame_preset(pid)?),
+        None => None,
+    };
     let bytes = crate::preview::framed_preview::generate_framed_preview(photo, preset)
         .tauri()?;
-    state.preview_cache.lock().unwrap().insert((photo_id, preset_id), bytes.clone());
+    state.preview_cache.lock().unwrap().insert(cache_key, bytes.clone());
     Ok(bytes)
 }
 

@@ -27,7 +27,6 @@ export default function CanvasPresetForm({ event, onCreated, onCancel, editing }
   const [cols, setCols] = useState(editing?.cols ?? 2);
   const [rows, setRows] = useState(editing?.rows ?? 1);
   const [dpi, setDpi] = useState(editing?.dpi ?? 300);
-  const [margin, setMargin] = useState(editing?.margin_px ?? 0);
   const { error, setError, loading: saving, run } = useAsyncForm();
 
   function applyTemplate(idx: number) {
@@ -41,7 +40,7 @@ export default function CanvasPresetForm({ event, onCreated, onCancel, editing }
     if (!name.trim()) { setError("Name is required"); return; }
     if (cols * rows < n) { setError(`Grid ${cols}×${rows} has ${cols*rows} slots but photos/canvas is ${n}`); return; }
     const input = { name: name.trim(), canvas_width_px: w, canvas_height_px: h,
-      photos_per_canvas: n, dpi, margin_px: margin, cols, rows };
+      photos_per_canvas: n, dpi, cols, rows };
     await run(async () => {
       if (editing) {
         const preset = await invoke<CanvasPreset>("update_canvas_preset", {
@@ -104,9 +103,6 @@ export default function CanvasPresetForm({ event, onCreated, onCancel, editing }
         </Field>
         <Field label="DPI">
           <NumInput value={dpi} onChange={setDpi} min={72} max={600} />
-        </Field>
-        <Field label="Margin (px)">
-          <NumInput value={margin} onChange={setMargin} min={0} max={200} />
         </Field>
       </div>
 

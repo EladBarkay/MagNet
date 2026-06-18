@@ -34,7 +34,6 @@ export type FramePreset = {
   portrait_frame_path: string;
   target_ratio_w: number;
   target_ratio_h: number;
-  crop_method: "center" | "rule_of_thirds";
 };
 
 export type CanvasPreset = {
@@ -44,7 +43,6 @@ export type CanvasPreset = {
   canvas_height_px: number;
   photos_per_canvas: number;
   dpi: number;
-  margin_px: number;
   cols: number;
   rows: number;
 };

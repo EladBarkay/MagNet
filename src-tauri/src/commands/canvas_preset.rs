@@ -12,7 +12,6 @@ pub struct CanvasPresetInput {
     pub canvas_height_px: u32,
     pub photos_per_canvas: u8,
     pub dpi: u32,
-    pub margin_px: u32,
     pub cols: u8,
     pub rows: u8,
 }
@@ -26,7 +25,6 @@ impl CanvasPresetInput {
             canvas_height_px: self.canvas_height_px,
             photos_per_canvas: self.photos_per_canvas,
             dpi: self.dpi,
-            margin_px: self.margin_px,
             cols: self.cols,
             rows: self.rows,
         }

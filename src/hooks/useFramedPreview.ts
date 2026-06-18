@@ -10,13 +10,14 @@ export function useFramedPreview(
   const [src, setSrc] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!eventId || !photoId || !presetId) {
+    if (!eventId || !photoId) {
       setSrc(null);
       return;
     }
 
     let cancelled = false;
 
+    // `presetId === null` → backend returns the raw full-photo preview.
     invoke<number[]>("get_framed_preview", { eventId, photoId, presetId })
       .then((bytes) => {
         if (cancelled) return;

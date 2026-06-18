@@ -19,7 +19,6 @@ pub fn compose_canvases(
 pub fn compose_one(images: &[DynamicImage], preset: &CanvasPreset) -> DynamicImage {
     let slot_w = preset.slot_width();
     let slot_h = preset.slot_height();
-    let margin = preset.margin_px;
 
     // RGB throughout: canvases are opaque white and exported as RGB JPEG, so
     // an alpha channel would only add memory traffic.
@@ -32,8 +31,8 @@ pub fn compose_one(images: &[DynamicImage], preset: &CanvasPreset) -> DynamicIma
     for (i, img) in images.iter().enumerate() {
         let col = (i as u32) % preset.cols as u32;
         let row = (i as u32) / preset.cols as u32;
-        let slot_x = margin + col * (slot_w + margin);
-        let slot_y = margin + row * (slot_h + margin);
+        let slot_x = col * slot_w;
+        let slot_y = row * slot_h;
 
         // Framed images arrive pre-fitted to the slot — center them with white
         // letterboxing, never stretch. Contain-fit only if somehow oversized.
@@ -101,7 +100,6 @@ mod tests {
             canvas_height_px: 160,
             photos_per_canvas: 2,
             dpi: 300,
-            margin_px: 0,
             cols: 2,
             rows: 1,
         }

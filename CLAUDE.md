@@ -40,7 +40,7 @@ When opening a folder, the app matches it against `source_path` in existing `mag
 - **Event** — top-level: name, list of `PhotoBatch`es, active `FramePreset`, `CanvasPreset`s, output folder path
 - **PhotoBatch** — absolute `source_path` to photographer's folder, list of `Photo`s
 - **Photo** — path, EXIF orientation, user overrides (orientation, crop), `print_count`, `export_count`, `content_hash` (SHA-256 of photo + XMP bytes — resets `print_count` when it changes)
-- **FramePreset** — absolute paths to landscape + portrait PNG (alpha), target ratio, crop method (center or rule-of-thirds)
+- **FramePreset** — absolute paths to landscape + portrait PNG (alpha), target ratio (crop is always centered)
 - **CanvasPreset** — pixel dimensions, photos-per-canvas, DPI, grid layout (e.g. 2400×1600, 2-up)
 
 Frames are per-event PNGs provided by the photographer (no bundled frames). Paths stored as absolute paths.
@@ -53,9 +53,9 @@ aspect preserved, RGBA8). Per photo, `frame_photo_for_canvas()`:
 
 1. `load_photo(path)` → decode (RGB8 for JPEG)
 2. `detect_orientation(photo)` → pixel dimensions → user override
-3. Orientation-aware crop ratio: landscape = preset ratio, portrait = **inverted** ratio
-4. SIMD crop+resize in one pass (`fast_image_resize`, no intermediate copy)
-5. `blend_rgba_over_rgb()` → in-place frame composite (no RGBA round-trip)
+3. Orientation-aware crop ratio: landscape = preset ratio, portrait = **inverted** ratio (always centered)
+4. `imageops::crop_and_resize()` — SIMD crop+resize in one pass (`fast_image_resize`), with a `crop_imm`+`resize_exact` fallback in the same fn
+5. `imageops::overlay_frame()` → frame composite (in-place RGB8 fast path, else `image::imageops::overlay`)
 6. Rotate 90° if that fills the slot better (landscape photo in portrait slot)
 7. Compositor centers the result in its slot — white letterbox, **never stretched**
 8. `export_print_ready(framed, out_path)` → RGB JPEG q95 at 300 DPI
@@ -68,7 +68,7 @@ Dev profile compiles deps at opt-level 3 so `tauri dev` image work stays usable.
 
 - Thumbnails (256px) generated async at batch open, cached to `{app_cache}/thumbs/{sha256}.jpg`
 - Virtual list (react-window) in gallery; only visible thumbnails rendered
-- Full framed preview: on-demand Rust, cached per `(photo_id, preset_id)`, returned as bytes
+- Full framed preview: on-demand Rust, cached per `(photo_id, preset_id)` (preset `None` → keyed under nil UUID, returns the raw full photo), returned as bytes
 
 ### Print / Export
 
@@ -113,13 +113,14 @@ magnet/
 │   │   ├── photo/             # Core image processing — no Tauri deps, unit-tested
 │   │   │   ├── loader.rs      # load_photo(), read_exif_orientation(), compute_content_hash() (content-based)
 │   │   │   ├── orientation.rs # detect_orientation() → Photo::effective_orientation()
-│   │   │   ├── crop.rs        # compute_crop_rect() (center + rule-of-thirds), apply_crop() [tests]
-│   │   │   ├── frame.rs       # apply_frame_overlay(), apply_frame_overlay_image() [tests]
+│   │   │   ├── crop.rs        # compute_crop_rect() (always centered), apply_crop() [tests]
+│   │   │   ├── imageops.rs    # crop_and_resize() + overlay_frame() — fast path + simple fallback per fn [tests]
+│   │   │   ├── frame.rs       # apply_frame_overlay() — load frame PNG + overlay_frame() (preview path) [tests]
 │   │   │   ├── export.rs      # export_print_ready() — RGB JPEG q95, 300 DPI JFIF
 │   │   │   └── batch.rs       # frame_photo_for_canvas() (export/print per-photo path)
 │   │   ├── canvas/            # compositor.rs — tile + apply_watermark() (procedural, free tier)
 │   │   ├── project/           # model.rs + persistence.rs (serde_json, in-memory cache) [tests]
-│   │   ├── preview/           # thumbnail.rs (256px disk cache) + framed_preview.rs (1200px)
+│   │   ├── preview/           # thumbnail.rs (256px disk cache) + framed_preview.rs (1200px; preset=None → raw full photo, no crop/frame)
 │   │   ├── auth/              # entitlement.rs (Tier, cache, grace + expiry), session.rs (session.json), jwt.rs (Supabase JWKS verify), client.rs (token refresh + entitlement fetch)
 │   │   └── watcher/           # fs_watcher.rs — notify, emits `fs-changed` with changed path
 │   └── Cargo.toml
