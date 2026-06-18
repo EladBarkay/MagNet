@@ -2,7 +2,6 @@ import { useTranslation } from "react-i18next";
 import { Entitlement, MagnetEvent } from "../types";
 import { PrintIcon, SettingsIcon, TrashIcon } from "./icons";
 import { tierLabel, tierColor } from "../lib/tiers";
-import { QtyButton } from "./ui";
 
 type Props = {
   event: MagnetEvent | null;
@@ -10,17 +9,15 @@ type Props = {
   status: string;
   totalPhotos: number;
   queuedTotal: number;
-  cellSize: number;
   onOpenEvent: () => void;
   onDeleteEvent: () => void;
   onProcess: () => void;
   onSettings: () => void;
-  onCellSizeChange: (size: number) => void;
 };
 
 export default function Toolbar({
-  event, entitlement, status, totalPhotos, queuedTotal, cellSize,
-  onOpenEvent, onDeleteEvent, onProcess, onSettings, onCellSizeChange,
+  event, entitlement, status, totalPhotos, queuedTotal,
+  onOpenEvent, onDeleteEvent, onProcess, onSettings,
 }: Props) {
   const { t } = useTranslation();
   const tier = entitlement?.tier ?? "free";
@@ -48,13 +45,6 @@ export default function Toolbar({
           </button>
 
           <div className="ms-auto flex items-center gap-3">
-            {/* Gallery cell size */}
-            <div className="flex items-center gap-1">
-              <span className="text-xs text-neutral-500">{t("toolbar.size")}</span>
-              <QtyButton size="sm" label="−" onClick={() => onCellSizeChange(Math.max(100, cellSize - 20))} disabled={cellSize <= 100} />
-              <QtyButton size="sm" label="+" onClick={() => onCellSizeChange(Math.min(280, cellSize + 20))} disabled={cellSize >= 280} />
-            </div>
-
             <button
               onClick={onProcess}
               disabled={queuedTotal === 0}

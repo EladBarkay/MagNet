@@ -4,7 +4,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { MagnetEvent } from "../types";
 import { ExportProgress, useExportProgress } from "../hooks/useExportProgress";
-import CanvasPresetForm from "./CanvasPresetForm";
 import { Modal, Field, Chip, PresetOption } from "./ui";
 
 type Destination = "print" | "export";
@@ -24,7 +23,6 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
     event.active_frame_preset_id ?? event.frame_presets[0]?.id ?? ""
   );
   const [canvasId, setCanvasId] = useState<string>(event.canvas_presets[0]?.id ?? "");
-  const [showNewPreset, setShowNewPreset] = useState(event.canvas_presets.length === 0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [printResult, setPrintResult] = useState<number | null>(null);
@@ -207,36 +205,19 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
 
         {/* Canvas preset */}
         <Field label={t("process.canvasPreset")}>
-          {event.canvas_presets.length > 0 && (
+          {event.canvas_presets.length === 0 ? (
+            <p className="text-xs text-red-400">{t("process.noCanvasPresets")}</p>
+          ) : (
             <div className="space-y-1">
               {event.canvas_presets.map((p) => (
                 <PresetOption
                   key={p.id}
                   preset={p}
                   selected={p.id === canvasId}
-                  onSelect={() => { setCanvasId(p.id); setShowNewPreset(false); }}
+                  onSelect={() => setCanvasId(p.id)}
                 />
               ))}
             </div>
-          )}
-          {showNewPreset ? (
-            <CanvasPresetForm
-              event={event}
-              onCreated={(preset, updatedEvent) => {
-                onEventUpdate(updatedEvent);
-                setCanvasId(preset.id);
-                setShowNewPreset(false);
-              }}
-              onCancel={() => setShowNewPreset(false)}
-            />
-          ) : (
-            <button
-              onClick={() => setShowNewPreset(true)}
-              disabled={busy}
-              className={`text-xs ${busy ? "text-neutral-600 cursor-not-allowed" : "text-blue-400 hover:text-blue-300"}`}
-            >
-              {t("process.newPreset")}
-            </button>
           )}
         </Field>
 

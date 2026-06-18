@@ -72,6 +72,28 @@ export default function App() {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
+  // Gallery cell size via Ctrl+Plus/Minus and Ctrl+wheel (clamp 100–280, step 20).
+  useEffect(() => {
+    const bump = (dir: number) =>
+      setCellSize((c) => Math.min(280, Math.max(100, c + dir * 20)));
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      if (["+", "=", "Add"].includes(e.key)) { e.preventDefault(); bump(1); }
+      else if (["-", "_", "Subtract"].includes(e.key)) { e.preventDefault(); bump(-1); }
+    };
+    const onWheel = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault(); // suppress webview page zoom
+      bump(e.deltaY < 0 ? 1 : -1);
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("wheel", onWheel);
+    };
+  }, []);
+
   useEffect(() => {
     invoke<Entitlement | null>("get_entitlement")
       .then((info) => setEntitlement(info ?? null))
@@ -507,12 +529,10 @@ export default function App() {
         status={status}
         totalPhotos={totalPhotos}
         queuedTotal={queuedTotal}
-        cellSize={cellSize}
         onOpenEvent={openEvent}
         onDeleteEvent={deleteEvent}
         onProcess={() => setModal("process")}
         onSettings={() => setModal("settings")}
-        onCellSizeChange={setCellSize}
       />
 
       <div className="flex flex-1 overflow-hidden">
