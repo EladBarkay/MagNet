@@ -123,7 +123,9 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
                 try {
                   const { openPath } = await import("@tauri-apps/plugin-opener");
                   await openPath(exportResult.output_dir);
-                } catch {}
+                } catch (e) {
+                  alert(`Could not open folder: ${e}`);
+                }
               }}
               className="px-3 py-1.5 text-sm bg-neutral-700 hover:bg-neutral-600 rounded"
             >
