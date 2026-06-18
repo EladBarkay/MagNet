@@ -9,6 +9,7 @@ import SettingsDialog from "./components/SettingsDialog";
 import CanvasPresetForm from "./components/CanvasPresetForm";
 import { Modal } from "./components/ui";
 import Toolbar from "./components/Toolbar";
+import GalleryToolbar from "./components/GalleryToolbar";
 import Sidebar from "./components/Sidebar";
 import EmptyState from "./components/EmptyState";
 import { useFsWatcher } from "./hooks/useFsWatcher";
@@ -479,21 +480,13 @@ export default function App() {
         entitlement={entitlement}
         status={status}
         totalPhotos={totalPhotos}
-        activeBatch={activeBatch}
         queuedTotal={queuedTotal}
-        allQty={allQty}
-        selectedCount={selectedIds.size}
         cellSize={cellSize}
-        hideEmpty={hideEmpty}
-        scanning={scanning}
         onOpenEvent={openEvent}
         onDeleteEvent={deleteEvent}
         onProcess={() => setModal("process")}
         onSettings={() => setModal("settings")}
-        onSetAllQty={handleSetAllQty}
         onCellSizeChange={setCellSize}
-        onScanFaces={scanFaces}
-        onToggleHideEmpty={() => setHideEmpty((v) => !v)}
       />
 
       <div className="flex flex-1 overflow-hidden">
@@ -529,34 +522,47 @@ export default function App() {
         )}
 
         {event ? (
-          <div className="flex flex-1 overflow-hidden">
-            <Gallery
-              photos={visiblePhotos}
-              selectedId={selected?.id ?? null}
-              selectedIds={selectedIds}
-              onPhotoClick={handlePhotoClick}
-              photoQueue={photoQueue}
-              onQtyDelta={adjustQty}
-              cellSize={cellSize}
-              onColCountChange={(n) => { colCountRef.current = n; }}
-            />
-            {selected && (
-              <>
-                <div
-                  onMouseDown={onDividerMouseDown}
-                  className="w-1 cursor-col-resize bg-neutral-700 hover:bg-blue-500 transition-colors shrink-0"
-                />
-                <PreviewPanel
-                  event={event}
-                  photo={selected}
-                  onClose={() => setSelected(null)}
-                  frameNonce={frameNonce}
-                  onOrientationOverride={(id, o) => setOrientation(id, o)}
-                  onClearOrientationOverride={(id) => setOrientation(id, null)}
-                  width={previewWidth}
-                />
-              </>
+          <div className="flex flex-1 flex-col overflow-hidden">
+            {activeBatch && activeBatch.photos.length > 0 && (
+              <GalleryToolbar
+                selectedCount={selectedIds.size}
+                allQty={allQty}
+                hideEmpty={hideEmpty}
+                scanning={scanning}
+                onSetAllQty={handleSetAllQty}
+                onScanFaces={scanFaces}
+                onToggleHideEmpty={() => setHideEmpty((v) => !v)}
+              />
             )}
+            <div className="flex flex-1 overflow-hidden">
+              <Gallery
+                photos={visiblePhotos}
+                selectedId={selected?.id ?? null}
+                selectedIds={selectedIds}
+                onPhotoClick={handlePhotoClick}
+                photoQueue={photoQueue}
+                onQtyDelta={adjustQty}
+                cellSize={cellSize}
+                onColCountChange={(n) => { colCountRef.current = n; }}
+              />
+              {selected && (
+                <>
+                  <div
+                    onMouseDown={onDividerMouseDown}
+                    className="w-1 cursor-col-resize bg-neutral-700 hover:bg-blue-500 transition-colors shrink-0"
+                  />
+                  <PreviewPanel
+                    event={event}
+                    photo={selected}
+                    onClose={() => setSelected(null)}
+                    frameNonce={frameNonce}
+                    onOrientationOverride={(id, o) => setOrientation(id, o)}
+                    onClearOrientationOverride={(id) => setOrientation(id, null)}
+                    width={previewWidth}
+                  />
+                </>
+              )}
+            </div>
           </div>
         ) : (
           <EmptyState onOpen={openEvent} />

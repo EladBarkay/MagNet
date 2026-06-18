@@ -1,4 +1,4 @@
-import { Entitlement, MagnetEvent, PhotoBatch } from "../types";
+import { Entitlement, MagnetEvent } from "../types";
 import { PrintIcon, SettingsIcon, TrashIcon } from "./icons";
 import { tierLabel, tierColor } from "../lib/tiers";
 import { QtyButton } from "./ui";
@@ -8,34 +8,20 @@ type Props = {
   entitlement: Entitlement | null;
   status: string;
   totalPhotos: number;
-  activeBatch: PhotoBatch | null;
   queuedTotal: number;
-  allQty: number;
-  selectedCount: number;
   cellSize: number;
-  hideEmpty: boolean;
-  scanning: boolean;
   onOpenEvent: () => void;
   onDeleteEvent: () => void;
   onProcess: () => void;
   onSettings: () => void;
-  onSetAllQty: (qty: number) => void;
   onCellSizeChange: (size: number) => void;
-  onScanFaces: () => void;
-  onToggleHideEmpty: () => void;
 };
 
 export default function Toolbar({
-  event, entitlement, status, totalPhotos, activeBatch, queuedTotal, allQty, selectedCount, cellSize,
-  hideEmpty, scanning,
-  onOpenEvent, onDeleteEvent, onProcess, onSettings, onSetAllQty, onCellSizeChange,
-  onScanFaces, onToggleHideEmpty,
+  event, entitlement, status, totalPhotos, queuedTotal, cellSize,
+  onOpenEvent, onDeleteEvent, onProcess, onSettings, onCellSizeChange,
 }: Props) {
   const tier = entitlement?.tier ?? "free";
-
-  function changeAllQty(delta: number) {
-    onSetAllQty(Math.max(0, allQty + delta));
-  }
 
   return (
     <header className="flex items-center gap-3 px-4 py-2.5 bg-neutral-800 border-b border-neutral-700 shrink-0">
@@ -66,47 +52,6 @@ export default function Toolbar({
               <QtyButton size="sm" label="−" onClick={() => onCellSizeChange(Math.max(100, cellSize - 20))} disabled={cellSize <= 100} />
               <QtyButton size="sm" label="+" onClick={() => onCellSizeChange(Math.min(280, cellSize + 20))} disabled={cellSize >= 280} />
             </div>
-
-            {activeBatch && activeBatch.photos.length > 0 && (
-              <>
-                {/* Suggest copies = face count per photo (runs on click) */}
-                <button
-                  onClick={onScanFaces}
-                  disabled={scanning}
-                  title="Set each photo's copies to the number of faces detected"
-                  className="px-2.5 py-1.5 bg-neutral-700 hover:bg-neutral-600 disabled:opacity-40 disabled:cursor-wait rounded text-xs font-medium transition-colors"
-                >
-                  {scanning ? "Scanning…" : "Suggest copies (faces)"}
-                </button>
-
-                {/* Show only photos queued for ≥1 copy */}
-                <label className="flex items-center gap-1.5 text-xs text-neutral-400 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={hideEmpty}
-                    onChange={onToggleHideEmpty}
-                    className="accent-blue-500"
-                  />
-                  Hide empty
-                </label>
-              </>
-            )}
-
-            {/* Print qty for the selection (or whole batch when none selected) */}
-            {activeBatch && activeBatch.photos.length > 0 && (
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs text-neutral-500">
-                  {selectedCount > 0 ? `Selected (${selectedCount}):` : "All:"}
-                </span>
-                <div className="flex items-center gap-0.5 rounded-full bg-neutral-700 px-0.5 py-0.5">
-                  <QtyButton size="sm" label="−" onClick={() => changeAllQty(-1)} disabled={allQty <= 0} />
-                  <span className="min-w-[18px] text-center text-xs font-semibold text-neutral-200 tabular-nums">
-                    {allQty}
-                  </span>
-                  <QtyButton size="sm" label="+" onClick={() => changeAllQty(+1)} />
-                </div>
-              </div>
-            )}
 
             <button
               onClick={onProcess}
