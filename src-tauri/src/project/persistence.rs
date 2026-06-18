@@ -28,21 +28,12 @@ impl EventStore {
         self.base_dir.join(id.to_string()).join("magnet.json")
     }
 
-    /// Run one-time schema migrations on a freshly-loaded event, persisting back
-    /// to disk if anything changed. Called from every disk-read path.
-    fn migrate_if_needed(&self, event: &mut Event) {
-        if event.migrate_canvas_margins() {
-            let _ = self.save(event);
-        }
-    }
-
     pub fn load(&self, id: Uuid) -> Result<Event> {
         if let Some(event) = self.cache.lock().unwrap().get(&id).cloned() {
             return Ok(event);
         }
         let path = self.event_path(id);
-        let mut event: Event = load_json(&path)?;
-        self.migrate_if_needed(&mut event);
+        let event: Event = load_json(&path)?;
         self.cache.lock().unwrap().insert(id, event.clone());
         Ok(event)
     }
@@ -60,10 +51,7 @@ impl EventStore {
             let json_path = entry.path().join("magnet.json");
             if json_path.exists() {
                 match load_json::<Event>(&json_path).ok() {
-                    Some(mut event) => {
-                        self.migrate_if_needed(&mut event);
-                        events.push(event)
-                    },
+                    Some(event) => events.push(event),
                     None => log::warn!("skipping malformed event at {}", json_path.display()),
                 }
             }

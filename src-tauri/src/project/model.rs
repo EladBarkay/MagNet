@@ -14,9 +14,6 @@ pub struct Event {
     pub canvas_presets: Vec<CanvasPreset>,
     pub output_folder: Option<PathBuf>,
     pub active_frame_preset_id: Option<Uuid>,
-    /// Tracks whether canvas presets have been migrated from margin_px: 40 → 0
-    #[serde(default)]
-    pub migrated_margin: bool,
 }
 
 impl Event {
@@ -30,27 +27,7 @@ impl Event {
             canvas_presets: Vec::new(),
             output_folder: None,
             active_frame_preset_id: None,
-            migrated_margin: false,
         }
-    }
-
-    /// Auto-migrate canvas presets from margin_px: 40 → 0 if not already migrated.
-    /// Returns whether any presets were modified.
-    pub fn migrate_canvas_margins(&mut self) -> bool {
-        if self.migrated_margin {
-            return false;
-        }
-        let mut modified = false;
-        for preset in &mut self.canvas_presets {
-            if preset.margin_px == 40 {
-                preset.margin_px = 0;
-                modified = true;
-            }
-        }
-        if modified {
-            self.migrated_margin = true;
-        }
-        modified
     }
 
     /// Find a canvas preset by id, or a "not found" error message suitable for IPC.
@@ -174,7 +151,6 @@ pub struct FramePreset {
     /// Target ratio as (width, height), e.g. (4.0, 3.0)
     pub target_ratio_w: f32,
     pub target_ratio_h: f32,
-    pub crop_method: CropMethod,
 }
 
 impl FramePreset {
@@ -190,13 +166,6 @@ impl FramePreset {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum CropMethod {
-    Center,
-    RuleOfThirds,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CanvasPreset {
     pub id: Uuid,
@@ -205,20 +174,17 @@ pub struct CanvasPreset {
     pub canvas_height_px: u32,
     pub photos_per_canvas: u8,
     pub dpi: u32,
-    pub margin_px: u32,
     pub cols: u8,
     pub rows: u8,
 }
 
 impl CanvasPreset {
     pub fn slot_width(&self) -> u32 {
-        let total_margin = self.margin_px * (self.cols as u32 + 1);
-        (self.canvas_width_px - total_margin) / self.cols as u32
+        self.canvas_width_px / self.cols as u32
     }
 
     pub fn slot_height(&self) -> u32 {
-        let total_margin = self.margin_px * (self.rows as u32 + 1);
-        (self.canvas_height_px - total_margin) / self.rows as u32
+        self.canvas_height_px / self.rows as u32
     }
 }
 
@@ -264,7 +230,7 @@ mod tests {
     }
 
     #[test]
-    fn slot_dimensions_account_for_margins() {
+    fn slot_dimensions_divide_canvas_by_grid() {
         let preset = CanvasPreset {
             id: Uuid::new_v4(),
             name: "2-up".into(),
@@ -272,7 +238,6 @@ mod tests {
             canvas_height_px: 1600,
             photos_per_canvas: 2,
             dpi: 300,
-            margin_px: 0,
             cols: 2,
             rows: 1,
         };
