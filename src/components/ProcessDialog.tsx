@@ -17,7 +17,7 @@ type Props = {
 };
 
 export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdate, onProcessed }: Props) {
-  const [destination, setDestination] = useState<Destination>("print");
+  const [destination, setDestination] = useState<Destination>("export");
   const [frameId, setFrameId] = useState<string>(
     event.active_frame_preset_id ?? event.frame_presets[0]?.id ?? ""
   );
