@@ -83,7 +83,7 @@ export default function CanvasPresetManager({ event, onClose, onEventUpdate }: P
                       <p className="text-sm text-neutral-200 truncate">{p.name}</p>
                       <p className="text-[10px] text-neutral-500">
                         {p.canvas_width_px}×{p.canvas_height_px} · {p.photos_per_canvas}-up ·{" "}
-                        {p.cols}×{p.rows} grid · margin {p.margin_px}px
+                        {p.cols}×{p.rows} grid
                       </p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0 ml-2">

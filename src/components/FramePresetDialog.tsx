@@ -19,9 +19,6 @@ export default function FramePresetDialog({ event, onCreated, onClose, editing }
   const [portraitPath, setPortraitPath] = useState(editing?.portrait_frame_path ?? "");
   const [ratioW, setRatioW] = useState(editing?.target_ratio_w ?? 4);
   const [ratioH, setRatioH] = useState(editing?.target_ratio_h ?? 3);
-  const [cropMethod, setCropMethod] = useState<"center" | "rule_of_thirds">(
-    editing?.crop_method ?? "center"
-  );
   const { error, setError, loading: saving, run } = useAsyncForm();
 
   async function pickPng(setter: (p: string) => void) {
@@ -45,7 +42,6 @@ export default function FramePresetDialog({ event, onCreated, onClose, editing }
       portrait_frame_path: portraitPath,
       target_ratio_w: ratioW,
       target_ratio_h: ratioH,
-      crop_method: cropMethod,
     };
     await run(async () => {
       if (editing) {
@@ -124,26 +120,6 @@ export default function FramePresetDialog({ event, onCreated, onClose, editing }
             <span className="text-xs text-neutral-500">
               = {(ratioW / ratioH).toFixed(2)}
             </span>
-          </div>
-        </Field>
-
-        {/* Crop method */}
-        <Field label="Crop method">
-          <div className="flex gap-2">
-            {(["center", "rule_of_thirds"] as const).map((m) => (
-              <button
-                key={m}
-                onClick={() => setCropMethod(m)}
-                className={[
-                  "flex-1 py-1.5 text-xs rounded transition-colors",
-                  cropMethod === m
-                    ? "bg-blue-600 text-white"
-                    : "bg-neutral-800 text-neutral-400 hover:bg-neutral-700",
-                ].join(" ")}
-              >
-                {m === "center" ? "Center" : "Rule of thirds"}
-              </button>
-            ))}
           </div>
         </Field>
 

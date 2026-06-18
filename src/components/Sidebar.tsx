@@ -128,7 +128,7 @@ export default function Sidebar({
                 <div className="w-full px-3 py-1.5 pr-16 text-sm text-neutral-300">
                   <span className="block truncate">{p.name}</span>
                   <span className="block text-[10px] text-neutral-500">
-                    {`${p.target_ratio_w}:${p.target_ratio_h} · ${p.crop_method === "center" ? "center" : "rule of thirds"}`}
+                    {`${p.target_ratio_w}:${p.target_ratio_h}`}
                   </span>
                 </div>
                 <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

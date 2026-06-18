@@ -375,6 +375,8 @@ export default function App() {
         if (refreshedBatch) setActiveBatch(refreshedBatch);
       }
       setSelected((prev) => (prev?.id === photoId ? updatePhoto(prev) : prev));
+      // Orientation changes the crop ratio/frame, so force the preview to refetch.
+      setFrameNonce((n) => n + 1);
     } catch (e) {
       setStatus(`Error: ${e}`);
     }
