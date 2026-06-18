@@ -108,9 +108,15 @@ pub async fn refresh_batch(
     let source_path = batch.source_path.clone();
     let fresh = scan_folder(&source_path)?;
     let old = std::mem::take(&mut batch.photos);
-    batch.photos = merge_photos(old, fresh);
+    let (photos, changed_ids) = merge_photos(old, fresh);
+    batch.photos = photos;
 
     state.store.save(&event).tauri()?;
+    // A changed content hash means the on-disk pixels changed (e.g. rotated in
+    // Explorer); drop the stale cached preview so it re-renders.
+    for id in changed_ids {
+        state.invalidate_preview_for_photo(id);
+    }
     Ok(event)
 }
 
@@ -155,28 +161,81 @@ fn scan_folder(path: &std::path::Path) -> Result<Vec<Photo>, String> {
 
 /// Merge a re-scanned photo list into the existing batch, preserving user data.
 /// - Same path + same hash → keep existing (print_count, overrides)
-/// - Same path + changed hash → reset print_count + crop_override; keep orientation override
+/// - Same path + changed hash → keep id + orientation override; reset print_count + crop_override
 /// - New path → add
 /// - Path no longer present → drop
-fn merge_photos(existing: Vec<Photo>, scanned: Vec<Photo>) -> Vec<Photo> {
+///
+/// The id is keyed to the path (preserved across content changes), so frontend
+/// state keyed by photo id — the session copy-queue and the `selected` preview —
+/// survives a file being edited/rotated on disk. Returns the merged list plus
+/// the ids of photos whose content hash changed (callers invalidate their
+/// cached previews).
+fn merge_photos(existing: Vec<Photo>, scanned: Vec<Photo>) -> (Vec<Photo>, Vec<Uuid>) {
     let mut existing_map: HashMap<PathBuf, Photo> = existing
         .into_iter()
         .map(|p| (p.path.clone(), p))
         .collect();
 
-    scanned
+    let mut changed_ids = Vec::new();
+    let photos = scanned
         .into_iter()
         .map(|new_p| match existing_map.remove(&new_p.path) {
             Some(old) if old.content_hash == new_p.content_hash => old,
-            Some(old) => Photo {
-                orientation_override: old.orientation_override,
-                // crop_override stores pixel coordinates specific to the old image's
-                // dimensions; clearing it prevents out-of-bounds crops if the
-                // replacement photo has a different resolution.
-                print_count: 0,
-                ..new_p
-            },
+            Some(old) => {
+                changed_ids.push(old.id);
+                Photo {
+                    id: old.id,
+                    orientation_override: old.orientation_override,
+                    // crop_override stores pixel coordinates specific to the old image's
+                    // dimensions; clearing it (via ..new_p) prevents out-of-bounds crops
+                    // if the replacement photo has a different resolution.
+                    print_count: 0,
+                    ..new_p
+                }
+            }
             None => new_p,
         })
-        .collect()
+        .collect();
+    (photos, changed_ids)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn photo(path: &str, hash: &str) -> Photo {
+        Photo {
+            id: Uuid::new_v4(),
+            path: PathBuf::from(path),
+            width: 100,
+            height: 100,
+            exif_orientation: None,
+            orientation_override: None,
+            crop_override: None,
+            print_count: 5,
+            export_count: 0,
+            content_hash: hash.to_string(),
+        }
+    }
+
+    #[test]
+    fn changed_hash_keeps_id_resets_count_and_is_reported() {
+        let old = photo("/a.jpg", "h1");
+        let id = old.id;
+        let scanned = vec![photo("/a.jpg", "h2")]; // same path, new hash + new uuid
+        let (merged, changed) = merge_photos(vec![old], scanned);
+        assert_eq!(merged[0].id, id, "id must follow the path, not the rescan");
+        assert_eq!(merged[0].print_count, 0, "content change resets print_count");
+        assert_eq!(changed, vec![id]);
+    }
+
+    #[test]
+    fn same_hash_keeps_everything_and_reports_nothing() {
+        let old = photo("/a.jpg", "h1");
+        let id = old.id;
+        let (merged, changed) = merge_photos(vec![old], vec![photo("/a.jpg", "h1")]);
+        assert_eq!(merged[0].id, id);
+        assert_eq!(merged[0].print_count, 5);
+        assert!(changed.is_empty());
+    }
 }
