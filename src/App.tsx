@@ -615,6 +615,8 @@ export default function App() {
               hasNext={selIdx >= 0 && selIdx < visiblePhotos.length - 1}
               qty={photoQueue[selected.id] ?? 0}
               onQtyDelta={adjustQty}
+              photos={visiblePhotos}
+              onJump={(p) => { setSelected(p); setSelectedIds(new Set([p.id])); anchorRef.current = p.id; }}
             />
           )}
         </>

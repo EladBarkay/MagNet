@@ -20,6 +20,10 @@ type Props = {
   hasNext: boolean;
   qty: number;
   onQtyDelta: (photoId: string, delta: number) => void;
+  /** The photos being reviewed (the visible grid) — drives the filmstrip. */
+  photos: Photo[];
+  /** Jump straight to a photo (filmstrip click). */
+  onJump: (photo: Photo) => void;
 };
 
 /**
@@ -32,6 +36,7 @@ export default function Lightbox({
   event, photo, onClose, frameNonce,
   onOrientationOverride, onClearOrientationOverride,
   onPrev, onNext, hasPrev, hasNext, qty, onQtyDelta,
+  photos, onJump,
 }: Props) {
   const { t } = useTranslation();
   const filename = basename(photo.path);
@@ -44,6 +49,15 @@ export default function Lightbox({
 
   const framedSrc = useFramedPreview(event.id, photo.id, previewFrameId, frameNonce, photo.content_hash);
   const displaySrc = framedSrc ?? thumb;
+
+  // Warm the framed preview for the ±2 neighbors so left/right nav feels instant
+  // (backend caches per (photo_id, preset_id)). Filmstrip shows a wider window.
+  const currentIndex = photos.findIndex((p) => p.id === photo.id);
+  const prefetchIds = [-2, -1, 1, 2]
+    .map((d) => photos[currentIndex + d])
+    .filter((p): p is Photo => !!p);
+  const stripStart = Math.max(0, currentIndex - 3);
+  const stripPhotos = photos.slice(stripStart, currentIndex + 4);
   const naturalOrientation = inferOrientation(photo);
   const orientation = photo.orientation_override ?? naturalOrientation;
 
@@ -66,14 +80,20 @@ export default function Lightbox({
         </button>
       </div>
 
-      {/* Image + nav arrows */}
+      {/* Hidden prefetchers for neighbor framed previews (render nothing). */}
+      {prefetchIds.map((p) => (
+        <PreviewPrefetch key={p.id} eventId={event.id} photoId={p.id} presetId={previewFrameId} frameNonce={frameNonce} hash={p.content_hash} />
+      ))}
+
+      {/* Image + nav arrows. Clicking the empty margin beside the image closes. */}
       <div className="flex-1 flex items-center gap-2 px-2 min-h-0">
         <NavBtn dir="prev" onClick={onPrev} disabled={!hasPrev} />
-        <div className="flex-1 h-full flex items-center justify-center min-h-0">
+        <div className="flex-1 h-full flex items-center justify-center min-h-0" onClick={onClose}>
           {displaySrc ? (
             <img
               src={displaySrc}
               alt={filename}
+              onClick={(e) => e.stopPropagation()}
               className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
               draggable={false}
             />
@@ -83,6 +103,21 @@ export default function Lightbox({
         </div>
         <NavBtn dir="next" onClick={onNext} disabled={!hasNext} />
       </div>
+
+      {/* Filmstrip: neighbors around the current photo, so the user can see what's
+          left/right and jump directly. */}
+      {stripPhotos.length > 1 && (
+        <div className="shrink-0 flex items-center justify-center gap-1.5 px-4 py-2 overflow-x-auto">
+          {stripPhotos.map((p) => (
+            <FilmstripThumb
+              key={p.id}
+              photo={p}
+              active={p.id === photo.id}
+              onClick={() => onJump(p)}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Controls strip */}
       <div className="shrink-0 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 px-4 py-3 text-xs text-neutral-400">
@@ -161,6 +196,31 @@ function OrientBtn({ label, title, active, onClick }: { label: string; title: st
       ].join(" ")}
     >
       {label}
+    </button>
+  );
+}
+
+// Warms the framed-preview cache for one photo, renders nothing. Mounted for the
+// current photo's neighbors so navigating to them hits the cache.
+function PreviewPrefetch({ eventId, photoId, presetId, frameNonce, hash }: {
+  eventId: string; photoId: string; presetId: string | null; frameNonce: number; hash: string;
+}) {
+  useFramedPreview(eventId, photoId, presetId, frameNonce, hash);
+  return null;
+}
+
+function FilmstripThumb({ photo, active, onClick }: { photo: Photo; active: boolean; onClick: () => void }) {
+  const thumb = useThumbnail(photo.path, photo.content_hash);
+  return (
+    <button
+      onClick={onClick}
+      className={[
+        "shrink-0 w-14 h-14 rounded-md overflow-hidden transition-all bg-neutral-800",
+        active ? "ring-2 ring-accent" : "opacity-60 hover:opacity-100",
+      ].join(" ")}
+      aria-current={active}
+    >
+      {thumb && <img src={thumb} alt="" className="w-full h-full object-cover" draggable={false} />}
     </button>
   );
 }
