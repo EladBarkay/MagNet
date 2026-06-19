@@ -14,6 +14,26 @@ pub async fn get_thumbnail(
     state.thumbs.get_or_generate(&path, content_hash.as_deref()).tauri()
 }
 
+/// Small PNG preview of a frame file (landscape/portrait), alpha preserved so the
+/// transparent border shows. In-memory, no disk cache — only ever a couple of small
+/// images open in the frame-preset dialog.
+#[tauri::command]
+pub async fn get_frame_thumbnail(path: String) -> Result<Vec<u8>, String> {
+    use std::io::Cursor;
+    let img = image::ImageReader::open(&path)
+        .map_err(|e| e.to_string())?
+        .with_guessed_format()
+        .map_err(|e| e.to_string())?
+        .decode()
+        .map_err(|e| e.to_string())?;
+    let thumb = img.thumbnail(256, 256);
+    let mut buf = Cursor::new(Vec::new());
+    thumb
+        .write_to(&mut buf, image::ImageFormat::Png)
+        .map_err(|e| e.to_string())?;
+    Ok(buf.into_inner())
+}
+
 #[tauri::command]
 pub async fn get_framed_preview(
     event_id: Uuid,

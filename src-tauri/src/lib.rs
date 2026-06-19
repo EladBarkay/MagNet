@@ -175,6 +175,7 @@ pub fn run() {
             commands::project::refresh_batch,
             commands::project::sync_watches,
             commands::gallery::get_thumbnail,
+            commands::gallery::get_frame_thumbnail,
             commands::gallery::get_framed_preview,
             commands::gallery::clear_framed_preview_cache,
             commands::gallery::set_orientation_override,
