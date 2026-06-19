@@ -7,6 +7,7 @@ import Lightbox from "./components/Lightbox";
 import ExportDialog from "./components/ExportDialog";
 import FramePresetDialog from "./components/FramePresetDialog";
 import SettingsDialog from "./components/SettingsDialog";
+import DeviceManagerDialog from "./components/DeviceManagerDialog";
 import CanvasPresetForm from "./components/CanvasPresetForm";
 import EventConfigDialog from "./components/EventConfigDialog";
 import { Modal } from "./components/ui";
@@ -16,10 +17,11 @@ import ActionBar from "./components/ActionBar";
 import EmptyState from "./components/EmptyState";
 import { useFsWatcher } from "./hooks/useFsWatcher";
 import { useAuthDeepLink } from "./hooks/useAuthDeepLink";
+import { listDevices, currentDeviceHash } from "./lib/auth";
 import { reorderById } from "./lib/reorder";
 import { rangeIds } from "./lib/selection";
 import { EVENTS } from "./constants";
-import { MagnetEvent, Orientation, Photo, PhotoBatch, FramePreset, CanvasPreset, Entitlement } from "./types";
+import { MagnetEvent, Orientation, Photo, PhotoBatch, FramePreset, CanvasPreset, Entitlement, AuthResult, Device } from "./types";
 
 type ModalKind = "export" | "settings" | "eventConfig" | null;
 export type SortKey = "name" | "created" | "modified" | "size";
@@ -33,6 +35,10 @@ export default function App() {
   const [status, setStatus] = useState("");
   const [draggedBatchId, setDraggedBatchId] = useState<string | null>(null);
   const [entitlement, setEntitlement] = useState<Entitlement | null>(null);
+  // Device-seat picker: shown on the seat-limit interrupt ("limit") or from
+  // Settings → Manage devices ("manage"). `null` => hidden.
+  const [devicePicker, setDevicePicker] = useState<{ mode: "limit" | "manage"; devices: Device[] } | null>(null);
+  const [deviceHash, setDeviceHash] = useState("");
   const [frameNonce, setFrameNonce] = useState(0);
   const [editingFrame, setEditingFrame] = useState<FramePreset | null>(null);
   const [editingCanvas, setEditingCanvas] = useState<CanvasPreset | null>(null);
@@ -105,7 +111,24 @@ export default function App() {
     invoke<Entitlement | null>("get_entitlement")
       .then((info) => setEntitlement(info ?? null))
       .catch(() => {});
+    currentDeviceHash().then(setDeviceHash).catch(() => {});
   }, []);
+
+  // Translate an auth/provision outcome into UI state: signed in, or open the
+  // device-seat picker so the user can disconnect a device to proceed.
+  function handleAuthResult(result: AuthResult) {
+    if (result.kind === "entitlement") {
+      setEntitlement({
+        email: result.email,
+        tier: result.tier,
+        expires_at: result.expires_at,
+        last_verified: result.last_verified,
+      });
+      setDevicePicker(null);
+    } else {
+      setDevicePicker({ mode: "limit", devices: result.devices });
+    }
+  }
 
   // Background refresh: update entitlement when the background task resolves.
   useEffect(() => {
@@ -116,11 +139,20 @@ export default function App() {
       } catch {}
     });
     const unsub2 = listen<void>(EVENTS.LICENSE_EXPIRED, () => setEntitlement(null));
-    return () => { unsub.then(fn => fn()); unsub2.then(fn => fn()); };
+    // This device lost its seat (disconnected elsewhere): refresh tier (now Free)
+    // and prompt a re-selection.
+    const unsub3 = listen<Device[]>(EVENTS.DEVICE_LIMIT, async (e) => {
+      try {
+        const info = await invoke<Entitlement | null>("get_entitlement");
+        setEntitlement(info ?? null);
+      } catch {}
+      setDevicePicker({ mode: "limit", devices: e.payload });
+    });
+    return () => { unsub.then(fn => fn()); unsub2.then(fn => fn()); unsub3.then(fn => fn()); };
   }, []);
 
   // Completes OAuth sign-in when the magnetapp://auth-callback deep link arrives.
-  useAuthDeepLink(setEntitlement);
+  useAuthDeepLink(handleAuthResult);
 
   useFsWatcher(event, activeBatch, {
     onEvent: setEvent,
@@ -710,6 +742,23 @@ export default function App() {
           entitlement={entitlement}
           onClose={() => setModal(null)}
           onEntitlementChange={setEntitlement}
+          onAuthResult={handleAuthResult}
+          onManageDevices={async () => {
+            try {
+              const list = await listDevices();
+              setModal(null);
+              setDevicePicker({ mode: "manage", devices: list ?? [] });
+            } catch {}
+          }}
+        />
+      )}
+      {devicePicker && (
+        <DeviceManagerDialog
+          mode={devicePicker.mode}
+          initialDevices={devicePicker.devices}
+          currentHash={deviceHash}
+          onResolved={setEntitlement}
+          onClose={() => setDevicePicker(null)}
         />
       )}
       {addingCanvas && event && (

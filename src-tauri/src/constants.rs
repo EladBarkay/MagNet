@@ -10,6 +10,9 @@ pub mod events {
     pub const TIER_CHANGED: &str = "tier-changed";
     /// Offline grace lapsed; downgraded to Free. Payload: ().
     pub const LICENSE_EXPIRED: &str = "license-expired";
+    /// This device lost/can't take a subscription seat; the user must disconnect
+    /// one to proceed. Payload: Vec<DeviceInfo> (the currently registered devices).
+    pub const DEVICE_LIMIT: &str = "device-limit";
     /// Per-canvas save progress. Payload: SaveProgress.
     pub const SAVE_PROGRESS: &str = "save-progress";
     /// Save run finished. Payload: SaveComplete.

@@ -3,7 +3,6 @@ use reqwest::Client;
 use serde::Deserialize;
 use std::time::Duration;
 
-use crate::auth::entitlement::{Entitlement, Tier};
 use crate::auth::session::Session;
 
 const SUPABASE_URL: &str = env!("SUPABASE_URL");
@@ -51,22 +50,92 @@ pub async fn refresh(refresh_token: &str) -> Result<Session> {
     })
 }
 
-// ── entitlement fetch ─────────────────────────────────────────────────────────
+// ── entitlement token (Edge Function: issue-entitlement) ──────────────────────
 
-#[derive(Deserialize)]
-struct EntitlementRow {
-    tier: String,
-    expires_at: Option<String>,
+/// A device occupying a seat on the user's subscription, for the device picker.
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
+pub struct DeviceInfo {
+    pub device_hash: String,
+    pub device_label: String,
+    pub last_seen: Option<String>,
 }
 
-/// Fetch the caller's entitlement row from PostgREST. RLS guarantees the access
-/// token can only read its own row. No row => Free.
-///
-/// `email` is taken from the verified JWT and stored for display.
-pub async fn fetch_entitlement(access_token: &str, email: Option<String>) -> Result<Entitlement> {
+/// Outcome of asking the server to mint an entitlement token for this device.
+pub enum MintOutcome {
+    /// A signed entitlement token (compact EdDSA JWS).
+    Token(String),
+    /// The subscription is at its device-seat limit; the user must disconnect one
+    /// of these devices before this one can be registered.
+    DeviceLimitReached(Vec<DeviceInfo>),
+}
+
+#[derive(Deserialize)]
+struct IssueOk {
+    token: String,
+}
+
+#[derive(Deserialize)]
+struct DeviceLimitBody {
+    devices: Vec<DeviceInfo>,
+}
+
+fn functions_url(name: &str) -> String {
+    format!("{SUPABASE_URL}/functions/v1/{name}")
+}
+
+/// Ask the server to register `device_hash` (under the subscription's seat limit)
+/// and mint a signed entitlement token for it. A `409` means the seat limit is
+/// reached and the response lists the current devices instead.
+pub async fn issue_entitlement_token(
+    access_token: &str,
+    device_hash: &str,
+    device_label: &str,
+) -> Result<MintOutcome> {
+    let res = http()?
+        .post(functions_url("issue-entitlement"))
+        .header("apikey", SUPABASE_ANON_KEY)
+        .bearer_auth(access_token)
+        .json(&serde_json::json!({
+            "device_hash": device_hash,
+            "device_label": device_label,
+        }))
+        .send()
+        .await?;
+
+    if res.status() == reqwest::StatusCode::CONFLICT {
+        let body: DeviceLimitBody = res.json().await?;
+        return Ok(MintOutcome::DeviceLimitReached(body.devices));
+    }
+    if !res.status().is_success() {
+        return Err(anyhow!("issue-entitlement failed: {}", res.status()));
+    }
+    let body: IssueOk = res.json().await?;
+    Ok(MintOutcome::Token(body.token))
+}
+
+/// Remove a device from the subscription's registry, freeing a seat. The evicted
+/// device drops to Free on its next online check (or when its grace lapses).
+pub async fn disconnect_device(access_token: &str, device_hash: &str) -> Result<()> {
+    let res = http()?
+        .post(functions_url("disconnect-device"))
+        .header("apikey", SUPABASE_ANON_KEY)
+        .bearer_auth(access_token)
+        .json(&serde_json::json!({ "device_hash": device_hash }))
+        .send()
+        .await?;
+
+    if !res.status().is_success() {
+        return Err(anyhow!("disconnect-device failed: {}", res.status()));
+    }
+    Ok(())
+}
+
+/// List the caller's registered devices straight from PostgREST (RLS restricts
+/// the read to the caller's own rows), for the Settings "manage devices" view.
+pub async fn list_devices(access_token: &str) -> Result<Vec<DeviceInfo>> {
     let res = http()?
         .get(format!(
-            "{SUPABASE_URL}/rest/v1/entitlements?select=tier,expires_at"
+            "{SUPABASE_URL}/rest/v1/entitlement_devices?select=device_hash,device_label,last_seen"
         ))
         .header("apikey", SUPABASE_ANON_KEY)
         .bearer_auth(access_token)
@@ -74,40 +143,7 @@ pub async fn fetch_entitlement(access_token: &str, email: Option<String>) -> Res
         .await?;
 
     if !res.status().is_success() {
-        return Err(anyhow!("entitlement fetch failed: {}", res.status()));
+        return Err(anyhow!("list devices failed: {}", res.status()));
     }
-
-    let rows: Vec<EntitlementRow> = res.json().await?;
-    let Some(row) = rows.into_iter().next() else {
-        // No row yet — treat as Free.
-        return Ok(Entitlement {
-            email,
-            tier: Tier::Free,
-            expires_at: None,
-            last_verified: chrono::Utc::now(),
-        });
-    };
-
-    let tier = match row.tier.as_str() {
-        "pro" => Tier::Pro,
-        "studio" => Tier::Studio,
-        _ => Tier::Free,
-    };
-    let expires_at = row.expires_at.and_then(|s| {
-        // Supabase may return a plain date ("2025-12-31") or a full timestamptz
-        // ("2025-12-31T00:00:00+00:00").  Silently ignoring a parse error here
-        // would make an expired subscription appear perpetual, so try both.
-        chrono::NaiveDate::parse_from_str(&s, "%Y-%m-%d")
-            .or_else(|_| {
-                chrono::DateTime::parse_from_rfc3339(&s).map(|dt| dt.date_naive())
-            })
-            .ok()
-    });
-
-    Ok(Entitlement {
-        email,
-        tier,
-        expires_at,
-        last_verified: chrono::Utc::now(),
-    })
+    Ok(res.json().await?)
 }

@@ -38,8 +38,13 @@ rayon = "1"
 
 # Supabase auth + REST client
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
-# Supabase JWT verification against the public JWKS endpoint (asymmetric keys)
+# Supabase JWT verification against the public JWKS endpoint (asymmetric keys);
+# also verifies our EdDSA-signed entitlement tokens (v9 has EdDSA built in).
 jsonwebtoken = "9"
+# Stable per-machine id for device binding (license seat enforcement).
+machine-uid = "0.5"
+# Human-readable device label (name + OS) shown in the device picker.
+whoami = "1"
 
 # File watching
 notify = { version = "7", features = ["serde"] }

@@ -9,8 +9,9 @@ pub enum Tier {
     Studio,
 }
 
-/// The user's authorization state, resolved from the Supabase `entitlements`
-/// table and cached to `entitlement.json` for offline use.
+/// The user's authorization state, derived from a verified, server-signed
+/// entitlement token (see `entitlement_token`). Display/UI type — the trusted
+/// source is the token, not this struct.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Entitlement {
     /// Email of the signed-in user (for display only). `None` for dev bypass.
@@ -39,15 +40,19 @@ impl Entitlement {
         Utc::now() - self.last_verified < Duration::days(14)
     }
 
-    /// The tier actually in effect right now. Downgrades to Free only when the
-    /// subscription `expires_at` is in the past AND the offline grace window has
-    /// also lapsed.  Within the grace window the cached tier is kept because the
-    /// subscription may have been renewed since the last server verification.
+    /// The tier actually in effect right now. The in-memory `Entitlement` is only
+    /// ever populated from a *verified* entitlement token (whose signature and
+    /// `exp` were checked), so trust reduces to a single runtime guard: the 14-day
+    /// offline-grace ceiling measured from `last_verified` (= the token's `iat`,
+    /// i.e. the last successful online verification). This catches a session left
+    /// running past the grace window without a successful re-verification.
+    ///
+    /// Subscription end (`expires_at`) is enforced server-side at mint time — once
+    /// it lapses the server stops issuing paid tokens — so it is display-only here
+    /// and deliberately does NOT factor into the effective tier.
     pub fn effective_tier(&self) -> Tier {
-        if let Some(expiry) = self.expires_at {
-            if Utc::now().date_naive() > expiry && !self.is_grace_period_valid() {
-                return Tier::Free;
-            }
+        if !self.is_grace_period_valid() {
+            return Tier::Free;
         }
         self.tier.clone()
     }
@@ -69,25 +74,20 @@ mod tests {
     }
 
     #[test]
-    fn effective_tier_downgrades_when_expired() {
+    fn effective_tier_tracks_grace_only() {
         let mut e = Entitlement::free();
         e.tier = Tier::Pro;
 
-        e.expires_at = Some(Utc::now().date_naive() + Duration::days(1));
-        assert_eq!(e.effective_tier(), Tier::Pro, "future expiry keeps tier");
-
-        // Past expiry but still within the 14-day grace window (e.g. subscription
-        // was renewed offline; we give benefit of the doubt until we can verify).
-        e.expires_at = Some(Utc::now().date_naive() - Duration::days(1));
+        // Within grace → keep the tier, regardless of subscription end date
+        // (subscription expiry is enforced server-side at mint, not here).
         e.last_verified = Utc::now() - Duration::days(1);
-        assert_eq!(e.effective_tier(), Tier::Pro, "past expiry within grace keeps tier");
+        e.expires_at = Some(Utc::now().date_naive() - Duration::days(1));
+        assert_eq!(e.effective_tier(), Tier::Pro, "within grace keeps tier");
 
-        // Past expiry AND grace lapsed — definitively downgrade.
+        // Grace lapsed (no successful online re-verification in 14 days) → Free.
         e.last_verified = Utc::now() - Duration::days(15);
-        assert_eq!(e.effective_tier(), Tier::Free, "past expiry outside grace downgrades");
-
         e.expires_at = None;
-        assert_eq!(e.effective_tier(), Tier::Pro, "no expiry keeps tier");
+        assert_eq!(e.effective_tier(), Tier::Free, "lapsed grace downgrades to Free");
     }
 
     #[test]

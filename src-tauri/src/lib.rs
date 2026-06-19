@@ -19,10 +19,6 @@ use auth::session::Session;
 use auth::AuthState;
 use uuid::Uuid;
 
-/// Compile-time dev bypass: `MAGNET_DEV_TIER=pro` (or `studio`) seeds a synthetic
-/// entitlement so the app runs at that tier without a real sign-in.
-const DEV_TIER: Option<&str> = option_env!("MAGNET_DEV_TIER");
-
 pub struct AppState {
     pub store: EventStore,
     pub thumbs: ThumbnailCache,
@@ -58,29 +54,6 @@ impl AppState {
     pub fn invalidate_preview_for_photo(&self, photo_id: Uuid) {
         self.preview_cache.lock().unwrap().retain(|(pid, _), _| *pid != photo_id);
     }
-}
-
-/// Build the synthetic auth state for the compile-time dev bypass, if configured.
-fn dev_auth_state() -> Option<AuthState> {
-    let tier = match DEV_TIER {
-        Some("pro") => Tier::Pro,
-        Some("studio") => Tier::Studio,
-        _ => return None,
-    };
-    Some(AuthState {
-        session: Session {
-            access_token: String::new(),
-            refresh_token: AuthState::DEV_REFRESH_TOKEN.to_string(),
-            expires_at: 0,
-            user_id: "dev".to_string(),
-        },
-        entitlement: Entitlement {
-            email: Some("dev@magnet.app".to_string()),
-            tier,
-            expires_at: None,
-            last_verified: chrono::Utc::now(),
-        },
-    })
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -129,14 +102,18 @@ pub fn run() {
                 let _ = app_handle.emit(constants::events::FS_CHANGED, path.to_string_lossy().to_string());
             }).expect("FsWatcher init");
 
-            // Dev bypass takes precedence; otherwise load cached session + entitlement.
-            let initial_auth = dev_auth_state().or_else(|| {
-                let session = json_store::load_json(&data_dir.join("session.json")).ok()?;
-                let entitlement =
-                    json_store::load_json(&data_dir.join("entitlement.json"))
-                        .unwrap_or_else(|_| Entitlement::free());
-                Some(AuthState { session, entitlement })
-            });
+            // Load the cached session, then offline-verify the cached entitlement
+            // token (signature + device + grace) to seed the tier. This is only a
+            // fallback for the offline-launch case — the refresh loop below
+            // re-validates online first and overwrites it. An invalid/expired/
+            // wrong-device token yields Free until that online check succeeds.
+            let initial_auth = json_store::load_json::<Session>(&data_dir.join("session.json"))
+                .ok()
+                .map(|session| {
+                    let entitlement = auth::provision::load_cached(&data_dir)
+                        .unwrap_or_else(Entitlement::free);
+                    AuthState { session, entitlement }
+                });
 
             app.manage(AppState {
                 store,
@@ -192,17 +169,23 @@ pub fn run() {
             commands::auth::establish_session,
             commands::auth::get_entitlement,
             commands::auth::refresh_entitlement,
+            commands::auth::disconnect_device,
+            commands::auth::list_devices,
+            commands::auth::current_device_hash,
             commands::auth::sign_out,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
 
-/// Refreshes the cached session with Supabase and re-fetches the entitlement.
+/// Online-first re-validation at startup: refresh the session with Supabase and
+/// re-mint a fresh device-bound entitlement token (which rewrites the last-online
+/// timestamp and renews the 14-day grace).
 /// - First attempt is immediate (handles startup-while-online case).
 /// - Retries every 60s (handles launch-offline-then-connect case).
-/// - Stops after a successful refresh, an explicit rejection, or if there's no
-///   session (or the dev bypass) loaded.
+/// - Stops after a successful re-validation, an explicit rejection, or if there's
+///   no session loaded. Until it succeeds, the cached token (offline-verified at
+///   startup) governs the tier.
 async fn auth_refresh_loop(app: tauri::AppHandle) {
     use tauri::{Emitter, Manager};
 
@@ -224,11 +207,6 @@ async fn auth_refresh_loop(app: tauri::AppHandle) {
             break;
         };
 
-        // Dev bypass: never hits the network.
-        if existing.is_dev() {
-            break;
-        }
-
         // 1. Refresh the access token.
         let session = match auth::client::refresh(&existing.session.refresh_token).await {
             Ok(s) => s,
@@ -238,7 +216,7 @@ async fn auth_refresh_loop(app: tauri::AppHandle) {
                 // failed attempt so a grace expiry mid-session is caught promptly.
                 if !existing.entitlement.is_grace_period_valid() {
                     let _ = std::fs::remove_file(data_dir.join("session.json"));
-                    let _ = std::fs::remove_file(data_dir.join("entitlement.json"));
+                    auth::provision::clear_cached(&data_dir);
                     if let Ok(mut guard) = state.auth.lock() {
                         *guard = None;
                     }
@@ -260,25 +238,30 @@ async fn auth_refresh_loop(app: tauri::AppHandle) {
         }
 
         // 2. Verify the freshly minted access token.
-        let claims = match auth::jwt::verify(&session.access_token).await {
-            Ok(c) => c,
-            Err(_) => continue, // JWKS unreachable etc. — keep cached tier, retry.
-        };
-
-        // 3. Re-fetch the entitlement.
-        let entitlement =
-            match auth::client::fetch_entitlement(&session.access_token, claims.email.clone()).await
-            {
-                Ok(e) => e,
-                Err(_) => continue,
-            };
-
-        let _ = json_store::save_json(&data_dir.join("session.json"), &session);
-        let _ = json_store::save_json(&data_dir.join("entitlement.json"), &entitlement);
-        if let Ok(mut guard) = state.auth.lock() {
-            *guard = Some(AuthState { session, entitlement });
+        if auth::jwt::verify(&session.access_token).await.is_err() {
+            continue; // JWKS unreachable etc. — keep cached tier, retry.
         }
-        let _ = app.emit(constants::events::TIER_CHANGED, ());
-        break; // Done for this session.
+
+        // 3. Re-mint + verify the device-bound entitlement token.
+        match auth::provision::provision(&data_dir, &session.access_token).await {
+            Ok(auth::provision::Provisioned::Active(entitlement)) => {
+                if let Ok(mut guard) = state.auth.lock() {
+                    *guard = Some(AuthState { session, entitlement });
+                }
+                let _ = app.emit(constants::events::TIER_CHANGED, ());
+                break; // Done for this session.
+            }
+            Ok(auth::provision::Provisioned::DeviceLimit(devices)) => {
+                // This device lost its seat (disconnected elsewhere). Drop to Free,
+                // clear the cached token, and prompt the UI to re-select a device.
+                auth::provision::clear_cached(&data_dir);
+                if let Ok(mut guard) = state.auth.lock() {
+                    *guard = Some(AuthState { session, entitlement: Entitlement::free() });
+                }
+                let _ = app.emit(constants::events::DEVICE_LIMIT, devices);
+                break;
+            }
+            Err(_) => continue, // network blip minting/verifying — retry.
+        }
     }
 }

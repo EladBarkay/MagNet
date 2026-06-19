@@ -59,6 +59,19 @@ export type Entitlement = {
   last_verified: string; // ISO datetime
 };
 
+// A machine registered to the subscription (occupies a seat).
+export type Device = {
+  device_hash: string;
+  device_label: string;
+  last_seen: string | null;
+};
+
+// Result of an auth/provision call: either signed in, or the subscription is at
+// its device-seat limit and the user must disconnect one to proceed.
+export type AuthResult =
+  | ({ kind: "entitlement" } & Entitlement)
+  | { kind: "device_limit"; devices: Device[] };
+
 export type MagnetEvent = {
   id: string;
   name: string;

@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 /// A Supabase auth session. The refresh token is the long-lived secret used to
-/// mint new access tokens; it is per-user, not device-bound.
+/// mint new access tokens (per-user). Device binding is enforced separately, on
+/// the signed entitlement token (see `auth::entitlement_token`), not here.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
     pub access_token: String,

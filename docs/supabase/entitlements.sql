@@ -27,3 +27,25 @@ end; $$;
 
 create trigger on_auth_user_created after insert on auth.users
   for each row execute function public.handle_new_user();
+
+-- ── Device registry (license seat enforcement) ──────────────────────────────
+-- One row per machine actively using the subscription. The `issue-entitlement`
+-- Edge Function inserts/updates rows (as the service role) and caps the count per
+-- tier; `disconnect-device` deletes a row to free a seat. The client never writes
+-- here directly.
+create table public.entitlement_devices (
+  user_id      uuid not null references auth.users(id) on delete cascade,
+  device_hash  text not null,
+  device_label text not null default '',
+  first_seen   timestamptz not null default now(),
+  last_seen    timestamptz not null default now(),
+  primary key (user_id, device_hash)
+);
+
+alter table public.entitlement_devices enable row level security;
+
+-- Users may READ only their own devices (so the in-app "manage devices" list
+-- works). There is intentionally no insert/update/delete policy — only the
+-- service role (the Edge Functions) may mutate the registry.
+create policy "read own devices" on public.entitlement_devices
+  for select using (auth.uid() = user_id);

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
-import { Entitlement } from "../types";
+import { AuthResult, Entitlement } from "../types";
 import { supabase } from "../lib/supabase";
 import { establishFromSession } from "../lib/auth";
 import { tierLabel, tierColor } from "../lib/tiers";
@@ -14,11 +14,21 @@ type Props = {
   entitlement: Entitlement | null;
   onClose: () => void;
   onEntitlementChange: (entitlement: Entitlement | null) => void;
+  /** Handle an auth/provision outcome (signed in, or device-limit prompt). */
+  onAuthResult: (result: AuthResult) => void;
+  /** Open the "manage devices" picker. */
+  onManageDevices: () => void;
 };
 
 const BUY_URL = "https://magnet.app/pricing";
 
-export default function SettingsDialog({ entitlement, onClose, onEntitlementChange }: Props) {
+export default function SettingsDialog({
+  entitlement,
+  onClose,
+  onEntitlementChange,
+  onAuthResult,
+  onManageDevices,
+}: Props) {
   const { t, i18n } = useTranslation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -38,8 +48,8 @@ export default function SettingsDialog({ entitlement, onClose, onEntitlementChan
         password,
       });
       if (error || !data.session) throw new Error(error?.message ?? t("settings.signInFailed"));
-      const ent = await establishFromSession(data.session);
-      onEntitlementChange(ent);
+      const result = await establishFromSession(data.session);
+      onAuthResult(result);
       setEmail("");
       setPassword("");
     });
@@ -70,8 +80,9 @@ export default function SettingsDialog({ entitlement, onClose, onEntitlementChan
 
   async function refreshLicense() {
     await run(async () => {
-      const ent = await invoke<Entitlement | null>("refresh_entitlement");
-      onEntitlementChange(ent ?? null);
+      const result = await invoke<AuthResult | null>("refresh_entitlement");
+      if (!result) onEntitlementChange(null);
+      else onAuthResult(result);
     });
   }
 
@@ -148,6 +159,14 @@ export default function SettingsDialog({ entitlement, onClose, onEntitlementChan
                 className="text-xs text-accent hover:text-accent-hover text-start"
               >
                 {t("settings.buyLicense")}
+              </button>
+            )}
+            {tier !== "free" && (
+              <button
+                onClick={onManageDevices}
+                className="text-xs text-accent hover:text-accent-hover text-start"
+              >
+                {t("devices.manageLink")}
               </button>
             )}
             <button

@@ -218,6 +218,21 @@ const en = {
     signingIn: "Signing in…",
   },
 
+  devices: {
+    manageLink: "Manage devices",
+    limitTitle: "Device limit reached",
+    manageTitle: "Your devices",
+    limitHelp:
+      "Your subscription is already active on the maximum number of devices. Disconnect one to activate this device.",
+    manageHelp:
+      "Devices currently using your subscription. Disconnect any you no longer use to free a seat.",
+    thisDevice: "This device",
+    lastActive: "Last active {{date}}",
+    disconnect: "Disconnect",
+    unknownDevice: "Unknown device",
+    none: "No devices registered.",
+  },
+
   tier: {
     free: "Free",
     pro: "Pro",

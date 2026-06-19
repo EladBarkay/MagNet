@@ -1,0 +1,11 @@
+{
+  // Supabase's Edge deploy bundler resolves inline `npm:` / `jsr:` specifiers
+  // directly (it does not apply an import map to bare specifiers), so the
+  // functions import dependencies with the `npm:` prefix. Disable Deno's
+  // `no-import-prefix` lint rule, which would otherwise object to that style.
+  "lint": {
+    "rules": {
+      "exclude": ["no-import-prefix"]
+    }
+  }
+}

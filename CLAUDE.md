@@ -89,9 +89,15 @@ Dev profile compiles deps at opt-level 3 so `tauri dev` image work stays usable.
 - **Pro / Studio tier**: no watermark; tier comes from a Supabase `entitlements` row.
 - Identity via Supabase Auth (email+password, Google, Facebook). Tier is the
   `entitlements` row for the signed-in user — no license keys.
-- Session cache (`{app_data}/session.json`, refresh token) + entitlement cache
-  (`{app_data}/entitlement.json`), 14-day offline grace from last verification.
-- Dev bypass: `MAGNET_DEV_TIER=pro|studio` compile-time env seeds that tier, no sign-in.
+- Tier is delivered as a **server-signed, device-bound entitlement token** (EdDSA
+  JWS), verified offline against a public key baked into the binary. Session cache
+  (`{app_data}/session.json`, refresh token) + signed token cache
+  (`{app_data}/entitlement.token`), 14-day offline grace measured from the token's
+  `iat` (last successful online verification).
+- **Device binding / seats**: the token is bound to a `machine-uid` hash; copying
+  caches to another machine fails verification. Each active device occupies a seat
+  (Pro 2, Studio 5); at the limit the user disconnects a device to add a new one.
+- No dev/tier bypass: every build goes through real sign-in + server validation.
 
 ## Folder Structure
 
@@ -109,7 +115,7 @@ magnet/
 │   │   │   ├── batch.rs       # save_batch, print_photos (watermark per tier)
 │   │   │   ├── canvas_preset.rs  # list/create/update/delete_canvas_preset
 │   │   │   ├── frame_preset.rs   # list/create/update/delete_frame_preset
-│   │   │   └── auth.rs        # establish_session, get_entitlement, sign_out
+│   │   │   └── auth.rs        # establish_session, get_entitlement, refresh_entitlement, disconnect_device, list_devices, current_device_hash, sign_out
 │   │   ├── photo/             # Core image processing — no Tauri deps, unit-tested
 │   │   │   ├── loader.rs      # load_photo(), read_exif_orientation(), compute_content_hash() (content-based)
 │   │   │   ├── orientation.rs # detect_orientation() → Photo::effective_orientation()
@@ -121,7 +127,7 @@ magnet/
 │   │   ├── canvas/            # compositor.rs — tile + apply_watermark() (procedural, free tier)
 │   │   ├── project/           # model.rs + persistence.rs (serde_json, in-memory cache) [tests]
 │   │   ├── preview/           # thumbnail.rs (256px disk cache) + framed_preview.rs (1200px; preset=None → raw full photo, no crop/frame)
-│   │   ├── auth/              # entitlement.rs (Tier, cache, grace + expiry), session.rs (session.json), jwt.rs (Supabase JWKS verify), client.rs (token refresh + entitlement fetch)
+│   │   ├── auth/              # entitlement.rs (Tier + grace), entitlement_token.rs (EdDSA token verify), device.rs (machine-uid hash + label), session.rs (session.json), jwt.rs (Supabase JWKS verify), client.rs (refresh + issue/disconnect/list devices), provision.rs (mint→verify→cache orchestration)
 │   │   └── watcher/           # fs_watcher.rs — notify, emits `fs-changed` with changed path
 │   └── Cargo.toml
 ├── src/
@@ -135,7 +141,8 @@ magnet/
 │   │   ├── ExportDialog.tsx   # print/save config: frame+canvas preset pick + manage (add/edit/delete), sticky defaults
 │   │   ├── FramePresetDialog.tsx   # create/edit frame preset
 │   │   ├── CanvasPresetForm.tsx    # create/edit canvas preset (used inside ExportDialog manage)
-│   │   ├── SettingsDialog.tsx      # Supabase sign-in (email/password + Google/Facebook), tier display, sign out
+│   │   ├── SettingsDialog.tsx      # Supabase sign-in (email/password + Google/Facebook), tier display, manage devices, sign out
+│   │   ├── DeviceManagerDialog.tsx # device-seat picker (seat-limit interrupt + manage), disconnect devices
 │   │   ├── EmptyState.tsx          # empty gallery placeholder
 │   │   ├── icons.tsx               # SVG icon components
 │   │   └── ui.tsx                  # shared Modal and primitive UI components
@@ -159,26 +166,34 @@ submission is deferred — files go to a temp dir, OS printer dialog is not yet 
 ### Auth & Entitlements (current)
 
 **Clean split**: the frontend (`supabase-js`) only drives interactive sign-in;
-**Rust is the source of truth for tier**. After email/password or OAuth sign-in,
-the frontend hands `{access_token, refresh_token, expires_at}` to Rust via
-`establish_session`. Rust verifies the JWT against Supabase JWKS (`auth/jwt.rs`,
-asymmetric keys — no secret in the binary), fetches the `entitlements` row over
-PostgREST + RLS (`auth/client.rs::fetch_entitlement`, Bearer token → caller's row
-only), and persists `session.json` + `entitlement.json` in `{app_data}/`.
+**Rust is the source of truth for tier**, and the tier itself is never trusted off
+local disk — it is delivered as a **server-signed, device-bound entitlement
+token** (EdDSA JWS). After email/password or OAuth sign-in, the frontend hands
+`{access_token, refresh_token, expires_at}` to Rust via `establish_session`. Rust
+verifies the JWT against Supabase JWKS (`auth/jwt.rs`, asymmetric keys — no secret
+in the binary), then calls the `issue-entitlement` Edge Function
+(`auth/client.rs` + `auth/provision.rs`) to register this device
+(`auth/device.rs` → `machine-uid` hash) and mint the token. The token is verified
+offline (`auth/entitlement_token.rs`, against the baked-in `ENTITLEMENT_PUBLIC_KEY`)
+before its tier is trusted, and cached as `session.json` + `entitlement.token` in
+`{app_data}/`.
 
-OAuth uses PKCE and returns via the custom deep link `magnet://auth-callback`
+If the subscription is at its device-seat limit, `issue-entitlement` returns
+`device_limit_reached` + the device list; the command surfaces an `AuthResult`
+with `kind: "device_limit"`, the UI opens `DeviceManagerDialog`, the user
+disconnects a device (`disconnect-device`), and provisioning retries.
+
+OAuth uses PKCE and returns via the custom deep link `magnetapp://auth-callback`
 (`tauri-plugin-deep-link`, handled by `useAuthDeepLink`); Google/Meta only ever
 see Supabase's HTTPS callback, never the custom scheme.
 
-`auth_refresh_loop` (in `lib.rs`) runs at startup: refresh access token → verify →
-re-fetch entitlement → save → emit `tier-changed`. Retries every 60 s while
-offline; if the 14-day grace (from `entitlement.last_verified`) has lapsed it
-clears caches and emits `license-expired`. `Entitlement::effective_tier()` also
-downgrades to Free once `expires_at` passes.
-
-**Dev bypass**: compile with `MAGNET_DEV_TIER=pro` (or `studio`) → `lib.rs` seeds
-a synthetic `AuthState` (sentinel refresh token `dev-bypass`); the refresh loop
-skips it. No sign-in, no network.
+`auth_refresh_loop` (in `lib.rs`) runs at startup, **online-first**: refresh access
+token → JWKS-verify → re-mint + verify the entitlement token (rewriting `iat`,
+renewing the 14-day grace) → emit `tier-changed`. When the server is unreachable it
+falls back to the offline-verified cached token; retries every 60 s while offline;
+if the 14-day grace (from the token's `iat`) has lapsed it clears caches and emits
+`license-expired`. If this device lost its seat, it emits `device-limit` and drops
+to Free. `Entitlement::effective_tier()` enforces the grace ceiling at read time.
 
 `AppState::tier()` gates watermarking in `save_batch`/`print_photos`. Free tier
 composites a procedural diagonal-stripe watermark (no bundled asset/font).

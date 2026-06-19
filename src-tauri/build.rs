@@ -18,9 +18,22 @@ fn main() {
         .unwrap_or_else(|_| "YOUR_SUPABASE_ANON_KEY".to_string());
     println!("cargo:rustc-env=SUPABASE_ANON_KEY={anon_key}");
 
-    // MAGNET_DEV_TIER is intentionally NOT given a default — it's read via
-    // `option_env!`, so an unset value means "no dev bypass".
+    // Ed25519 public key (SPKI PEM) used to verify the server-signed entitlement
+    // tokens offline. The matching private key lives ONLY in the Supabase Edge
+    // Function secret `ENTITLEMENT_SIGNING_KEY` — never in this repo. A missing
+    // key compiles fine but every token then fails verification (→ Free tier),
+    // which is the safe default for builds without licensing configured.
+    //
+    // `cargo:rustc-env` is line-based, so a multi-line PEM must have its newlines
+    // escaped to the two-char sequence `\n`; the runtime verifier decodes them
+    // back before parsing the key.
+    let ent_key = std::env::var("ENTITLEMENT_PUBLIC_KEY")
+        .unwrap_or_else(|_| "-----BEGIN PUBLIC KEY-----\nUNCONFIGURED\n-----END PUBLIC KEY-----".to_string())
+        .replace('\r', "")
+        .replace('\n', "\\n");
+    println!("cargo:rustc-env=ENTITLEMENT_PUBLIC_KEY={ent_key}");
+
     println!("cargo:rerun-if-env-changed=SUPABASE_URL");
     println!("cargo:rerun-if-env-changed=SUPABASE_ANON_KEY");
-    println!("cargo:rerun-if-env-changed=MAGNET_DEV_TIER");
+    println!("cargo:rerun-if-env-changed=ENTITLEMENT_PUBLIC_KEY");
 }

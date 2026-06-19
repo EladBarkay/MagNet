@@ -2,11 +2,11 @@ import { useEffect } from "react";
 import { onOpenUrl, getCurrent } from "@tauri-apps/plugin-deep-link";
 import { supabase } from "../lib/supabase";
 import { establishFromSession } from "../lib/auth";
-import type { Entitlement } from "../types";
+import type { AuthResult } from "../types";
 
 /// Handles the OAuth deep-link callback `magnetapp://auth-callback?code=…`:
 /// exchanges the PKCE code for a Supabase session, then hands it to Rust.
-export function useAuthDeepLink(onEntitlement: (e: Entitlement) => void) {
+export function useAuthDeepLink(onAuthResult: (r: AuthResult) => void) {
   useEffect(() => {
     let unsub: (() => void) | undefined;
 
@@ -18,8 +18,8 @@ export function useAuthDeepLink(onEntitlement: (e: Entitlement) => void) {
           if (!code) continue;
           const { data, error } = await supabase.auth.exchangeCodeForSession(code);
           if (error || !data.session) continue;
-          const entitlement = await establishFromSession(data.session);
-          onEntitlement(entitlement);
+          const result = await establishFromSession(data.session);
+          onAuthResult(result);
         } catch {
           // Ignore malformed/expired callbacks.
         }
@@ -31,5 +31,5 @@ export function useAuthDeepLink(onEntitlement: (e: Entitlement) => void) {
     onOpenUrl(handle).then((fn) => { unsub = fn; }).catch(() => {});
 
     return () => { unsub?.(); };
-  }, [onEntitlement]);
+  }, [onAuthResult]);
 }
