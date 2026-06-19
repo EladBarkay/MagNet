@@ -117,6 +117,10 @@ pub struct Photo {
     #[serde(default)]
     pub save_count: u32,
     pub content_hash: String,
+    // Queued copies for the next export/print run, persisted so a closed+reopened
+    // event restores each card's last value. Defaults to 1 (old events / new photos).
+    #[serde(default = "default_copies")]
+    pub copies: u32,
     // File metadata for gallery sorting. Epoch seconds; 0 when unknown (e.g. old
     // events or platforms without created-time). Derived from the file, not user data.
     #[serde(default)]
@@ -125,6 +129,10 @@ pub struct Photo {
     pub created: u64,
     #[serde(default)]
     pub modified: u64,
+}
+
+fn default_copies() -> u32 {
+    1
 }
 
 impl Photo {
@@ -217,6 +225,7 @@ mod tests {
             print_count: 0,
             save_count: 0,
             content_hash: String::new(),
+            copies: 1,
             size_bytes: 0,
             created: 0,
             modified: 0,

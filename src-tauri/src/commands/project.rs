@@ -33,6 +33,24 @@ pub async fn save_event(event: Event, state: State<'_, AppState>) -> Result<(), 
     state.store.save(&event).tauri()
 }
 
+/// Persist per-photo queued copies. The map holds only photos with >0 copies; any
+/// photo not in the map is set to 0 (the user zeroed it). Called debounced by the
+/// frontend as the queue changes.
+#[tauri::command]
+pub async fn set_photo_copies(
+    event_id: Uuid,
+    copies: HashMap<Uuid, u32>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let mut event = state.store.load(event_id).tauri()?;
+    for batch in &mut event.batches {
+        for photo in &mut batch.photos {
+            photo.copies = copies.get(&photo.id).copied().unwrap_or(0);
+        }
+    }
+    state.store.save(&event).tauri()
+}
+
 #[tauri::command]
 pub async fn delete_event(event_id: Uuid, state: State<'_, AppState>) -> Result<(), String> {
     state.store.delete(event_id).tauri()
@@ -197,6 +215,8 @@ fn merge_photos(existing: Vec<Photo>, scanned: Vec<Photo>) -> (Vec<Photo>, Vec<U
                     // dimensions; clearing it (via ..new_p) prevents out-of-bounds crops
                     // if the replacement photo has a different resolution.
                     print_count: 0,
+                    // Queued copies are user intent — keep them across a content change.
+                    copies: old.copies,
                     ..new_p
                 }
             }
@@ -222,6 +242,7 @@ mod tests {
             print_count: 5,
             save_count: 0,
             content_hash: hash.to_string(),
+            copies: 1,
             size_bytes: 0,
             created: 0,
             modified: 0,

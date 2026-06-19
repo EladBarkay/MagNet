@@ -52,7 +52,7 @@ export default function EventConfigDialog({
             <Chip label={t("preview.none")} active={frameId === null} onClick={() => setFrameId(null)} />
             {event.frame_presets.map((p) => (
               <div key={p.id} className="group relative flex items-center">
-                <Chip label={p.name} active={p.id === frameId} onClick={() => setFrameId(p.id)} />
+                <Chip label={p.name} active={p.id === frameId} onClick={() => setFrameId(p.id)} onDoubleClick={() => onEditFrame(p)} />
                 <span className="ms-1 hidden group-hover:flex items-center gap-0.5">
                   <button onClick={() => onEditFrame(p)} title={t("sidebar.editFrame")} className="p-0.5 text-neutral-500 hover:text-accent"><EditIcon /></button>
                   <button onClick={() => onDeleteFrame(p)} title={t("sidebar.deleteFrame")} className="p-0.5 text-neutral-500 hover:text-red-400"><TrashIcon className="w-3 h-3" /></button>
@@ -77,7 +77,7 @@ export default function EventConfigDialog({
             {event.canvas_presets.map((p) => (
               <div key={p.id} className="group flex items-center gap-1">
                 <div className="flex-1 min-w-0">
-                  <PresetOption preset={p} selected={p.id === canvasId} onSelect={() => setCanvasId(p.id)} />
+                  <PresetOption preset={p} selected={p.id === canvasId} onSelect={() => setCanvasId(p.id)} onDoubleClick={() => onEditCanvas(p)} />
                 </div>
                 <button onClick={() => onEditCanvas(p)} title={t("sidebar.editCanvas")} className="p-1 text-neutral-500 hover:text-accent opacity-0 group-hover:opacity-100 transition-opacity"><EditIcon /></button>
                 <button onClick={() => onDeleteCanvas(p)} title={t("sidebar.deleteCanvas")} className="p-1 text-neutral-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"><TrashIcon className="w-3 h-3" /></button>

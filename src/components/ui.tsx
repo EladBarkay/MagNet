@@ -45,14 +45,17 @@ export function Chip({
   label,
   active,
   onClick,
+  onDoubleClick,
 }: {
   label: string;
   active: boolean;
   onClick: () => void;
+  onDoubleClick?: () => void;
 }) {
   return (
     <button
       onClick={onClick}
+      onDoubleClick={onDoubleClick}
       className={[
         "px-2.5 py-1 text-xs rounded transition-colors",
         active ? "bg-accent text-accent-fg" : "bg-neutral-700 hover:bg-neutral-600 text-neutral-300",
@@ -147,14 +150,17 @@ export function PresetOption({
   preset,
   selected,
   onSelect,
+  onDoubleClick,
 }: {
   preset: CanvasPreset;
   selected: boolean;
   onSelect: () => void;
+  onDoubleClick?: () => void;
 }) {
   return (
     <button
       onClick={onSelect}
+      onDoubleClick={onDoubleClick}
       className={[
         "w-full text-start px-3 py-2 rounded text-sm transition-colors",
         selected

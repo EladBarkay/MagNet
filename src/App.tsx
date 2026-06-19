@@ -65,6 +65,8 @@ export default function App() {
   // watcher) get a default qty of 1; photos the user zeroed stay "seen" so they
   // aren't bumped back up.
   const seenIdsRef = useRef<Set<string>>(new Set());
+  // Skips the persist-on-change effect for the queue we just loaded from disk.
+  const skipPersistRef = useRef(false);
 
   function clearSelection() {
     setSelected(null);
@@ -165,11 +167,19 @@ export default function App() {
     onFrameChanged: () => setFrameNonce((n) => n + 1),
   });
 
-  function initQueueForBatch(batch: PhotoBatch | null | undefined): Record<string, number> {
-    seenIdsRef.current = new Set(batch?.photos.map((p) => p.id) ?? []);
-    if (!batch) return {};
+  // Seed the global copy-queue from each photo's persisted `copies` (across all
+  // batches), so a reopened event restores the last values instead of resetting to 1.
+  function seedQueueFromEvent(evt: MagnetEvent): Record<string, number> {
     const q: Record<string, number> = {};
-    for (const p of batch.photos) q[p.id] = 1;
+    const all: string[] = [];
+    for (const b of evt.batches) {
+      for (const p of b.photos) {
+        all.push(p.id);
+        if (p.copies > 0) q[p.id] = p.copies;
+      }
+    }
+    seenIdsRef.current = new Set(all);
+    skipPersistRef.current = true; // don't write the freshly-loaded values back
     return q;
   }
 
@@ -187,6 +197,18 @@ export default function App() {
     for (const p of newIds) seenIdsRef.current.add(p.id);
   }, [activeBatch]);
 
+  // Persist queued copies (debounced) so they survive close/reopen. Skips the run
+  // right after a load (seedQueueFromEvent) so we don't echo disk values back.
+  useEffect(() => {
+    if (!event) return;
+    if (skipPersistRef.current) { skipPersistRef.current = false; return; }
+    const id = event.id;
+    const timer = setTimeout(() => {
+      invoke("set_photo_copies", { eventId: id, copies: photoQueue }).catch(() => {});
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [photoQueue, event?.id]);
+
   async function openEvent() {
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");
@@ -197,7 +219,7 @@ export default function App() {
       setEvent(evt);
       setActiveBatch(evt.batches[0] ?? null);
       clearSelection();
-      setPhotoQueue(initQueueForBatch(evt.batches[0]));
+      setPhotoQueue(seedQueueFromEvent(evt));
       invoke("sync_watches", { eventId: evt.id }).catch(() => {});
       setStatus("");
     } catch (e) {
@@ -469,33 +491,38 @@ export default function App() {
     ? targetQtys[0]
     : 0;
 
-  // Keyboard navigation through photos when preview is open.
+  // Keyboard navigation through photos. Works over the grid and in the lightbox;
+  // with nothing selected, the first arrow selects the first card and goes from there.
   useEffect(() => {
-    if (!selected) return;
     const handler = (e: KeyboardEvent) => {
-      if (["ArrowRight", "ArrowLeft", "ArrowUp", "ArrowDown"].includes(e.key)) {
+      const isArrow = ["ArrowRight", "ArrowLeft", "ArrowUp", "ArrowDown"].includes(e.key);
+      if (isArrow) {
+        const target = e.target as HTMLElement | null;
+        if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+        if (visiblePhotos.length === 0) return;
         e.preventDefault();
-        const idx = visiblePhotos.findIndex((p) => p.id === selected.id);
-        if (idx < 0) return;
+        const idx = selected ? visiblePhotos.findIndex((p) => p.id === selected.id) : -1;
+        const select = (photo: Photo) => {
+          setSelected(photo);
+          if (!lightboxOpen) setSelectedIds(new Set([photo.id]));
+          anchorRef.current = photo.id;
+        };
+        if (idx < 0) { select(visiblePhotos[0]); return; }
         const cols = colCountRef.current;
-        let next = idx;
-        // Under RTL the visual left/right are mirrored, so ArrowRight should move to
-        // the previous photo and ArrowLeft to the next (matching the gallery flow).
-        const rtl = i18n.dir() === "rtl";
-        const fwd = rtl ? -1 : 1; // ArrowRight delta
-        // In the lightbox only left/right make sense (the grid rows are hidden, so
-        // up/down would jump unpredictably). Over the grid all four navigate.
         const clamp = (n: number) => Math.min(visiblePhotos.length - 1, Math.max(0, n));
+        // react-window's grid is laid out left-to-right regardless of `dir`, so only
+        // the lightbox filmstrip (a dir-aware flex row) needs the RTL left/right flip.
+        const rtl = lightboxOpen && i18n.dir() === "rtl";
+        const fwd = rtl ? -1 : 1; // ArrowRight delta
+        let next = idx;
         if (e.key === "ArrowRight") next = clamp(idx + fwd);
         else if (e.key === "ArrowLeft") next = clamp(idx - fwd);
         else if (e.key === "ArrowDown") next = lightboxOpen ? idx : clamp(idx + cols);
         else if (e.key === "ArrowUp") next = lightboxOpen ? idx : clamp(idx - cols);
-        const nextPhoto = visiblePhotos[next];
-        setSelected(nextPhoto);
-        if (!lightboxOpen) setSelectedIds(new Set([nextPhoto.id]));
-        anchorRef.current = nextPhoto.id;
+        select(visiblePhotos[next]);
+        return;
       }
-      if (e.key === "Enter") setLightboxOpen(true);
+      if (e.key === "Enter" && selected) setLightboxOpen(true);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);

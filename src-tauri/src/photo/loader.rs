@@ -104,6 +104,7 @@ pub fn scan_photo(path: PathBuf) -> Result<Photo> {
         print_count: 0,
         save_count: 0,
         content_hash,
+        copies: 1,
         size_bytes,
         created,
         modified,

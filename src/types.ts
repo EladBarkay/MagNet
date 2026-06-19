@@ -18,6 +18,7 @@ export type Photo = {
   print_count: number;
   save_count: number;
   content_hash: string;
+  copies: number;
   size_bytes: number;
   created: number;
   modified: number;

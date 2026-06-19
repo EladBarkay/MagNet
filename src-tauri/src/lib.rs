@@ -145,6 +145,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::project::open_event,
             commands::project::save_event,
+            commands::project::set_photo_copies,
             commands::project::set_output_folder,
             commands::project::add_batch,
             commands::project::delete_event,
