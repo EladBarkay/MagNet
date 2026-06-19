@@ -126,13 +126,15 @@ magnet/
 │   └── Cargo.toml
 ├── src/
 │   ├── components/            # flat (no nested folders)
-│   │   ├── Gallery.tsx        # react-window FixedSizeGrid virtual grid
+│   │   ├── Toolbar.tsx        # slim top band: logo, event name, open/delete, settings/tier
+│   │   ├── BatchTabs.tsx      # horizontal batch tab strip (drag-reorder) + view controls (grid size, hide-empty)
+│   │   ├── ActionBar.tsx      # sticky bottom band: queued totals + Export; swaps to bulk controls on selection
+│   │   ├── Gallery.tsx        # react-window FixedSizeGrid virtual grid (full-width)
 │   │   ├── PhotoCard.tsx      # thumbnail tile + qty stepper (bottom overlay, default 1)
-│   │   ├── PreviewPanel.tsx   # framed preview + orientation override + save/print counts
-│   │   ├── ExportDialog.tsx   # print/save config: frame+canvas preset pickers, progress bar
+│   │   ├── Lightbox.tsx       # full-screen framed preview + prev/next + orientation/frame/copies/counts
+│   │   ├── ExportDialog.tsx   # print/save config: frame+canvas preset pick + manage (add/edit/delete), sticky defaults
 │   │   ├── FramePresetDialog.tsx   # create/edit frame preset
-│   │   ├── CanvasPresetForm.tsx    # create/edit canvas preset (used by manager)
-│   │   ├── CanvasPresetManager.tsx # list/edit/delete canvas presets
+│   │   ├── CanvasPresetForm.tsx    # create/edit canvas preset (used inside ExportDialog manage)
 │   │   ├── SettingsDialog.tsx      # Supabase sign-in (email/password + Google/Facebook), tier display, sign out
 │   │   ├── EmptyState.tsx          # empty gallery placeholder
 │   │   ├── icons.tsx               # SVG icon components
