@@ -249,7 +249,6 @@ Backend (baked in at `cargo build` via `build.rs` — override with real env var
 |---|---|---|
 | `SUPABASE_URL` | Supabase project URL. | `https://YOUR_PROJECT_REF.supabase.co` |
 | `SUPABASE_ANON_KEY` | Supabase anon key (public, safe to ship). | `YOUR_SUPABASE_ANON_KEY` |
-| `ORENEW_DEV_TIER` | Developer bypass — `pro` or `studio` seeds that tier with no sign-in. Unset = normal auth. | _(unset)_ |
 
 Frontend (read via `import.meta.env`, see `.env.example`):
 
