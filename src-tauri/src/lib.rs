@@ -94,6 +94,10 @@ pub fn run() {
 
             let store = EventStore::new(data_dir.join("events"))
                 .expect("EventStore init");
+            // Clones for the coalesced-write flush task + the window-close hook.
+            // EventStore is Arc-backed, so these share the same cache/dirty set.
+            let store_flush = store.clone();
+            let store_close = store.clone();
             let thumbs = ThumbnailCache::new(data_dir.join("thumbs"))
                 .expect("ThumbnailCache init");
 
@@ -139,6 +143,30 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 auth_refresh_loop(app_handle_bg).await;
             });
+
+            // Background task: flush coalesced event writes to disk every 1s.
+            // ponytail: 1s poll, swap to notify/condvar only if it ever shows up
+            // in a profile.
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                    if let Err(e) = store_flush.flush_dirty() {
+                        log::warn!("event flush failed: {e:#}");
+                    }
+                }
+            });
+
+            // Durability backstop: flush the last edits synchronously when the
+            // main window is closing, before the process exits.
+            if let Some(window) = app.get_webview_window("main") {
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { .. } = event {
+                        if let Err(e) = store_close.flush_dirty() {
+                            log::warn!("event flush on close failed: {e:#}");
+                        }
+                    }
+                });
+            }
 
             Ok(())
         })

@@ -200,10 +200,13 @@ pub async fn save_batch(
                 .collect()
         });
 
-        // Increment save_count for all saved photos
+        // Increment save_count for all saved photos. Flush immediately —
+        // billing-relevant counts must survive a crash, not wait for the
+        // coalesced 1s flush.
         if let Ok(mut evt) = store.load(event_id) {
             bump_counts(&mut evt, &quantities, |p| &mut p.save_count);
             let _ = store.save(&evt);
+            let _ = store.flush_one(event_id);
         }
 
         let _ = app.emit(crate::constants::events::SAVE_COMPLETE, SaveComplete {
@@ -255,6 +258,8 @@ pub async fn print_photos(
 
     bump_counts(&mut event, &quantities, |p| &mut p.print_count);
     state.store.save(&event).tauri()?;
+    // Flush immediately — billing-relevant counts must survive a crash.
+    state.store.flush_one(event_id).tauri()?;
 
     Ok(paths.len())
 }
