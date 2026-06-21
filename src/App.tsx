@@ -17,6 +17,7 @@ import ActionBar from "./components/ActionBar";
 import EmptyState from "./components/EmptyState";
 import { useFsWatcher } from "./hooks/useFsWatcher";
 import { useAuthDeepLink } from "./hooks/useAuthDeepLink";
+import { useUpdater } from "./hooks/useUpdater";
 import { listDevices, currentDeviceHash } from "./lib/auth";
 import { reorderById } from "./lib/reorder";
 import { rangeIds } from "./lib/selection";
@@ -155,6 +156,9 @@ export default function App() {
 
   // Completes OAuth sign-in when the orenew://auth-callback deep link arrives.
   useAuthDeepLink(handleAuthResult);
+
+  // Best-effort signed update check on startup.
+  useUpdater();
 
   useFsWatcher(event, activeBatch, {
     onEvent: setEvent,

@@ -81,6 +81,8 @@ pub fn run() {
                 let _ = w.set_focus();
             }
         }));
+        // Signed auto-updates — the frontend calls check()/downloadAndInstall().
+        builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     }
     builder
         .plugin(tauri_plugin_opener::init())

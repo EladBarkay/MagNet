@@ -11,6 +11,7 @@
       "allow": [{ "path": "**" }]
     },
     "dialog:default",
-    "deep-link:default"
+    "deep-link:default",
+    "updater:default"
   ]
 }
