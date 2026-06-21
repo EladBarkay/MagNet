@@ -22,6 +22,16 @@ struct SaveComplete {
     output_dir: String,
 }
 
+/// Result of a print run. `dialog_opened` is true only where we can launch a real
+/// OS print dialog (Windows); elsewhere the canvases are written to `output_dir`
+/// and the frontend offers to open that folder so the user prints manually.
+#[derive(Serialize, Clone)]
+pub struct PrintResult {
+    count: usize,
+    dialog_opened: bool,
+    output_dir: String,
+}
+
 /// Open both frame PNGs and pre-resize/convert them for a given slot — done once
 /// per save/print run so the per-photo hot path does no frame I/O or conversion.
 fn load_and_prepare_frames(
@@ -225,7 +235,7 @@ pub async fn print_photos(
     frame_preset_id: Uuid,
     canvas_preset_id: Uuid,
     state: State<'_, AppState>,
-) -> Result<usize, String> {
+) -> Result<PrintResult, String> {
     let mut event = state.store.load(event_id).tauri()?;
     let PreparedBatch { photos, canvas_preset, frame_preset, frames, watermark, slot_w, slot_h } =
         prepare_batch(&event, &quantities, frame_preset_id, canvas_preset_id, 1, state.watermark())?;
@@ -256,10 +266,28 @@ pub async fn print_photos(
         paths.push(p);
     }
 
+    // Windows: launch the native print dialog (Photos print wizard) per canvas.
+    // The filenames are app-generated (`print_NNNN.jpg`), so the single-quoted
+    // PowerShell argument needs no further escaping.
+    #[cfg(windows)]
+    for p in &paths {
+        let _ = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command"])
+            .arg(format!("Start-Process -FilePath '{}' -Verb Print", p.display()))
+            .spawn();
+    }
+
     bump_counts(&mut event, &quantities, |p| &mut p.print_count);
     state.store.save(&event).tauri()?;
     // Flush immediately — billing-relevant counts must survive a crash.
+    // ponytail: print_count is optimistic — we can't detect the user cancelling
+    // the OS print dialog. Accurate counts would need per-platform spooler
+    // polling; add that only if customers dispute print billing.
     state.store.flush_one(event_id).tauri()?;
 
-    Ok(paths.len())
+    Ok(PrintResult {
+        count: paths.len(),
+        dialog_opened: cfg!(windows),
+        output_dir: tmp_dir.to_string_lossy().into_owned(),
+    })
 }

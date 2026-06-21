@@ -15,6 +15,11 @@ const he = {
     photos_other: "{{count}} תמונות",
   },
 
+  updater: {
+    available: "גרסה {{version}} של Orenew זמינה. להתקין כעת?",
+    installed: "העדכון הותקן — יש להפעיל מחדש את Orenew.",
+  },
+
   app: {
     loading: "טוען…",
     loadingBatch: "טוען נגלה…",
@@ -142,6 +147,14 @@ const he = {
     printSent_two: "נשלחו {{count}} קבצים להדפסה",
     printSent_many: "נשלחו {{count}} קבצים להדפסה",
     printSent_other: "נשלחו {{count}} קבצים להדפסה",
+    printDialogOpened_one: "חלון ההדפסה נפתח עבור קנבס אחד",
+    printDialogOpened_two: "חלון ההדפסה נפתח עבור {{count}} קנבסים",
+    printDialogOpened_many: "חלון ההדפסה נפתח עבור {{count}} קנבסים",
+    printDialogOpened_other: "חלון ההדפסה נפתח עבור {{count}} קנבסים",
+    printToFolder_one: "קנבס אחד מוכן — פתח את התיקייה כדי להדפיס",
+    printToFolder_two: "{{count}} קנבסים מוכנים — פתח את התיקייה כדי להדפיס",
+    printToFolder_many: "{{count}} קנבסים מוכנים — פתח את התיקייה כדי להדפיס",
+    printToFolder_other: "{{count}} קנבסים מוכנים — פתח את התיקייה כדי להדפיס",
     saving: "שומר…",
     composing: "מרכיב…",
     starting: "מתחיל…",

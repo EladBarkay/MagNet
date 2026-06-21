@@ -14,6 +14,11 @@ const en = {
     photos_other: "{{count}} photos",
   },
 
+  updater: {
+    available: "Orenew {{version}} is available. Install now?",
+    installed: "Update installed — please restart Orenew.",
+  },
+
   app: {
     loading: "Loading…",
     loadingBatch: "Loading batch…",
@@ -135,6 +140,10 @@ const en = {
     openFolder: "Open folder",
     printSent_one: "Sent {{count}} file for printing",
     printSent_other: "Sent {{count}} files for printing",
+    printDialogOpened_one: "Print dialog opened for {{count}} canvas",
+    printDialogOpened_other: "Print dialog opened for {{count}} canvases",
+    printToFolder_one: "{{count}} canvas ready — open the folder to print",
+    printToFolder_other: "{{count}} canvases ready — open the folder to print",
     saving: "Saving…",
     composing: "Composing…",
     starting: "Starting…",

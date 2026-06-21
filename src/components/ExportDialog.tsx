@@ -9,6 +9,8 @@ import { EditIcon, TrashIcon } from "./icons";
 
 type Destination = "print" | "save";
 
+type PrintResult = { count: number; dialog_opened: boolean; output_dir: string };
+
 type Props = {
   event: OrenewEvent;
   photoQueue: Record<string, number>;
@@ -37,7 +39,7 @@ export default function ExportDialog({
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [printResult, setPrintResult] = useState<number | null>(null);
+  const [printResult, setPrintResult] = useState<PrintResult | null>(null);
   const { progress, result: saveResult, clear: clearSave } = useSaveProgress();
 
   const saveProcessedRef = useRef(false);
@@ -90,13 +92,13 @@ export default function ExportDialog({
 
     try {
       if (destination === "print") {
-        const count = await invoke<number>("print_photos", {
+        const res = await invoke<PrintResult>("print_photos", {
           eventId: event.id,
           quantities,
           framePresetId: frameId,
           canvasPresetId: canvasId,
         });
-        setPrintResult(count);
+        setPrintResult(res);
         onExported("print", photoQueue);
       } else {
         clearSave();
@@ -170,14 +172,33 @@ export default function ExportDialog({
         <div className="space-y-4 text-center py-2">
           <p className="text-2xl">🖨</p>
           <p className="font-medium text-neutral-100">
-            {t("export.printSent", { count: printResult })}
+            {printResult.dialog_opened
+              ? t("export.printDialogOpened", { count: printResult.count })
+              : t("export.printToFolder", { count: printResult.count })}
           </p>
-          <button
-            onClick={onClose}
-            className="px-4 py-1.5 bg-accent hover:bg-accent-hover rounded text-sm font-medium"
-          >
-            {t("common.done")}
-          </button>
+          <div className="flex justify-center gap-2">
+            {!printResult.dialog_opened && (
+              <button
+                onClick={async () => {
+                  try {
+                    const { openPath } = await import("@tauri-apps/plugin-opener");
+                    await openPath(printResult.output_dir);
+                  } catch (e) {
+                    alert(t("common.couldNotOpenFolder", { message: String(e) }));
+                  }
+                }}
+                className="px-3 py-1.5 text-sm bg-neutral-700 hover:bg-neutral-600 rounded"
+              >
+                {t("export.openFolder")}
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="px-4 py-1.5 bg-accent hover:bg-accent-hover rounded text-sm font-medium"
+            >
+              {t("common.done")}
+            </button>
+          </div>
         </div>
       </Modal>
     );
