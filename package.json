@@ -14,7 +14,7 @@
     "react-dom": "^19.1.0",
     "@supabase/supabase-js": "^2",
     "i18next": "^26",
-    "react-i18next": "^14",
+    "react-i18next": "^17",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-opener": "^2",
     "@tauri-apps/plugin-dialog": "^2",
