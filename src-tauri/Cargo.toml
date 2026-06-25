@@ -39,12 +39,15 @@ rayon = "1"
 # Supabase auth + REST client
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 # Supabase JWT verification against the public JWKS endpoint (asymmetric keys);
-# also verifies our EdDSA-signed entitlement tokens (v9 has EdDSA built in).
-jsonwebtoken = "9"
+# also verifies our EdDSA-signed entitlement tokens. v10 made the crypto backend
+# opt-in (defaults enable neither) — add the pure-Rust provider so the Tauri release
+# matrix (Windows MSVC, macOS aarch64, Linux) doesn't need the aws-lc C/CMake/NASM
+# toolchain. Keep default features for PEM parsing (from_ed_pem / from_rsa_pem).
+jsonwebtoken = { version = "10", features = ["rust_crypto"] }
 # Stable per-machine id for device binding (license seat enforcement).
 machine-uid = "0.6"
 # Human-readable device label (name + OS) shown in the device picker.
-whoami = "1"
+whoami = "2"
 
 # File watching
 notify = { version = "7", features = ["serde"] }

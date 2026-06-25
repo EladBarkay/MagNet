@@ -1,7 +1,7 @@
 import type React from "react";
 import { useRef, useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { FixedSizeGrid, GridChildComponentProps } from "react-window";
+import { Grid, type CellComponentProps } from "react-window";
 import PhotoCard from "./PhotoCard";
 import { Photo } from "../types";
 
@@ -23,10 +23,10 @@ type Props = {
   onColCountChange?: (n: number) => void;
 };
 
-// Per-render data handed to the cell via react-window's `itemData`. Keeping the
+// Per-render data handed to the cell via react-window v2's `cellProps`. Keeping the
 // cell component identity stable (module-level) while passing data this way means
-// FixedSizeGrid re-renders cells on change but never *remounts* them — which is
-// what double-click needs (a remount between the two clicks eats the dblclick).
+// Grid re-renders cells on change but never *remounts* them — which is what
+// double-click needs (a remount between the two clicks eats the dblclick).
 type CellData = {
   photos: Photo[];
   colCount: number;
@@ -39,8 +39,20 @@ type CellData = {
   onQtyDelta: (photoId: string, delta: number) => void;
 };
 
-function Cell({ columnIndex, rowIndex, style, data }: GridChildComponentProps<CellData>) {
-  const { photos, colCount, cellSize, selectedId, selectedIds, photoQueue, onPhotoClick, onPhotoDoubleClick, onQtyDelta } = data;
+function Cell({
+  columnIndex,
+  rowIndex,
+  style,
+  photos,
+  colCount,
+  cellSize,
+  selectedId,
+  selectedIds,
+  photoQueue,
+  onPhotoClick,
+  onPhotoDoubleClick,
+  onQtyDelta,
+}: CellComponentProps<CellData>) {
   const idx = rowIndex * colCount + columnIndex;
   if (idx >= photos.length) return <div style={style} />;
   const photo = photos[idx];
@@ -117,19 +129,16 @@ export default function Gallery({ photos, selectedId, selectedIds, onPhotoClick,
   return (
     <div ref={containerRef} onClick={handleBackground} className="flex-1 overflow-hidden bg-neutral-900">
       {size.width > 0 && (
-        <FixedSizeGrid<CellData>
+        <Grid<CellData>
+          cellComponent={Cell}
+          cellProps={itemData}
           columnCount={colCount}
           columnWidth={cellStride}
           rowCount={rowCount}
           rowHeight={cellStride}
-          width={size.width}
-          height={size.height}
-          overscanRowCount={3}
-          itemData={itemData}
-          style={{ overflowX: "hidden" }}
-        >
-          {Cell}
-        </FixedSizeGrid>
+          overscanCount={3}
+          style={{ width: size.width, height: size.height, overflowX: "hidden" }}
+        />
       )}
     </div>
   );

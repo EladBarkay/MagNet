@@ -20,8 +20,13 @@ pub fn device_hash() -> String {
 }
 
 /// Human-friendly label shown in the "manage devices" picker, e.g.
-/// "Elad's MacBook · macOS". Best-effort — never fails.
+/// "Elad's MacBook · macOS". Best-effort — never fails. whoami 2 removed the
+/// `fallible` module and made `hostname()`/`devicename()` return `Result`, so
+/// fall back through hostname → devicename → a generic marker. `platform()`
+/// stays infallible.
 pub fn device_label() -> String {
-    let name = whoami::fallible::hostname().unwrap_or_else(|_| whoami::devicename());
+    let name = whoami::hostname()
+        .or_else(|_| whoami::devicename())
+        .unwrap_or_else(|_| "device".to_string());
     format!("{name} · {}", whoami::platform())
 }
