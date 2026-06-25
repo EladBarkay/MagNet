@@ -22,7 +22,7 @@ jobs:
   ci:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Tauri's Linux build/test deps (webkit, gtk, svg, appimage tooling).
       - name: Install system deps
