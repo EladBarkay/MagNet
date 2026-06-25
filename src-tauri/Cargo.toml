@@ -40,7 +40,7 @@ rayon = "1"
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 # Supabase JWT verification against the public JWKS endpoint (asymmetric keys);
 # also verifies our EdDSA-signed entitlement tokens (v9 has EdDSA built in).
-jsonwebtoken = "9"
+jsonwebtoken = "10"
 # Stable per-machine id for device binding (license seat enforcement).
 machine-uid = "0.6"
 # Human-readable device label (name + OS) shown in the device picker.
