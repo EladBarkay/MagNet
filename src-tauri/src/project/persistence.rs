@@ -108,10 +108,11 @@ impl EventStore {
         Ok(events)
     }
 
-    /// Find an existing event whose batch source paths overlap with `folder`.
+    /// Find an existing event that holds a photo directly inside `folder` (legacy
+    /// resume path; new events resume by `root_path`).
     pub fn find_by_source_path(&self, folder: &Path) -> Result<Option<Event>> {
         for event in self.list_all()? {
-            if event.batches.iter().any(|b| b.source_path == folder) {
+            if event.photos.keys().any(|p| p.parent() == Some(folder)) {
                 return Ok(Some(event));
             }
         }

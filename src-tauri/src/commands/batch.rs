@@ -74,16 +74,17 @@ fn expand_by_quantity(photos: &[Photo], qty: impl Fn(&Photo) -> u32) -> Vec<Phot
         .collect()
 }
 
-/// Collect photos in canonical event order (batch order → photo order within batch)
-/// for the given quantity map. Keys of `quantities` determine which photos are included.
-fn collect_selected(event: &Event, quantities: &HashMap<Uuid, u32>) -> Vec<Photo> {
-    event
-        .batches
-        .iter()
-        .flat_map(|b| &b.photos)
-        .filter(|p| quantities.contains_key(&p.id))
+/// Collect the queued photos sorted by path (stable output order). Keys of
+/// `quantities` determine which photos are included.
+fn collect_selected(event: &Event, quantities: &HashMap<PathBuf, u32>) -> Vec<Photo> {
+    let mut photos: Vec<Photo> = event
+        .photos
+        .values()
+        .filter(|p| quantities.contains_key(&p.path))
         .cloned()
-        .collect()
+        .collect();
+    photos.sort_by(|a, b| a.path.cmp(&b.path));
+    photos
 }
 
 /// Everything a save/print run needs once the event is loaded — shared by both
@@ -102,7 +103,7 @@ struct PreparedBatch {
 /// no explicit entry), validate non-empty, and load+prepare the frames once.
 fn prepare_batch(
     event: &Event,
-    quantities: &HashMap<Uuid, u32>,
+    quantities: &HashMap<PathBuf, u32>,
     frame_preset_id: Uuid,
     canvas_preset_id: Uuid,
     default_qty: u32,
@@ -113,7 +114,7 @@ fn prepare_batch(
 
     let selected = collect_selected(event, quantities);
     let photos = expand_by_quantity(&selected, |p| {
-        quantities.get(&p.id).copied().unwrap_or(default_qty)
+        quantities.get(&p.path).copied().unwrap_or(default_qty)
     });
     if photos.is_empty() {
         return Err("No photos queued — set quantities on gallery photos first".into());
@@ -137,14 +138,12 @@ fn prepare_batch(
 /// Add each photo's queued quantity to one of its counters (`field` selects which).
 fn bump_counts(
     event: &mut Event,
-    quantities: &HashMap<Uuid, u32>,
+    quantities: &HashMap<PathBuf, u32>,
     field: fn(&mut Photo) -> &mut u32,
 ) {
-    for batch in &mut event.batches {
-        for photo in &mut batch.photos {
-            if let Some(&qty) = quantities.get(&photo.id) {
-                *field(photo) += qty;
-            }
+    for (path, photo) in &mut event.photos {
+        if let Some(&qty) = quantities.get(path) {
+            *field(photo) += qty;
         }
     }
 }
@@ -152,7 +151,7 @@ fn bump_counts(
 #[tauri::command]
 pub async fn save_batch(
     event_id: Uuid,
-    quantities: HashMap<Uuid, u32>,
+    quantities: HashMap<PathBuf, u32>,
     frame_preset_id: Uuid,
     canvas_preset_id: Uuid,
     app: tauri::AppHandle,
@@ -281,7 +280,7 @@ pub async fn save_batch(
 #[tauri::command]
 pub async fn print_photos(
     event_id: Uuid,
-    quantities: HashMap<Uuid, u32>,
+    quantities: HashMap<PathBuf, u32>,
     frame_preset_id: Uuid,
     canvas_preset_id: Uuid,
     state: State<'_, AppState>,

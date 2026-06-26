@@ -132,7 +132,6 @@ mod tests {
 
     fn test_photo(path: PathBuf, w: u32, h: u32) -> Photo {
         Photo {
-            id: Uuid::new_v4(),
             path,
             width: w,
             height: h,

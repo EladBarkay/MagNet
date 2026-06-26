@@ -1,15 +1,20 @@
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Event {
     pub id: Uuid,
     pub name: String,
-    /// The folder used to open/identify this event session (not necessarily a batch folder).
+    /// The root folder of the event's filesystem tree; the sidebar navigates from here.
     #[serde(default)]
     pub root_path: Option<PathBuf>,
-    pub batches: Vec<PhotoBatch>,
+    /// Per-photo state keyed by absolute file path. There is no batch grouping: the
+    /// folder structure is read live from disk, and this map holds only the photos
+    /// the user has browsed to (their overrides, counts, queued copies).
+    #[serde(default)]
+    pub photos: HashMap<PathBuf, Photo>,
     pub frame_presets: Vec<FramePreset>,
     pub canvas_presets: Vec<CanvasPreset>,
     pub output_folder: Option<PathBuf>,
@@ -25,7 +30,7 @@ impl Event {
             id: Uuid::new_v4(),
             name,
             root_path: None,
-            batches: Vec::new(),
+            photos: HashMap::new(),
             frame_presets: Vec::new(),
             canvas_presets: Vec::new(),
             output_folder: None,
@@ -66,47 +71,33 @@ impl Event {
             .ok_or_else(|| format!("frame preset {id} not found"))
     }
 
-    /// Find a photo by id across all batches.
-    pub fn find_photo(&self, id: Uuid) -> Result<&Photo, String> {
-        self.batches
-            .iter()
-            .flat_map(|b| &b.photos)
-            .find(|p| p.id == id)
-            .ok_or_else(|| format!("photo {id} not found"))
+    /// Find a photo by its absolute path.
+    pub fn find_photo(&self, path: &Path) -> Result<&Photo, String> {
+        self.photos
+            .get(path)
+            .ok_or_else(|| format!("photo {} not found", path.display()))
     }
 
-    /// Find a photo by id across all batches (mutable).
-    pub fn find_photo_mut(&mut self, id: Uuid) -> Result<&mut Photo, String> {
-        self.batches
-            .iter_mut()
-            .flat_map(|b| &mut b.photos)
-            .find(|p| p.id == id)
-            .ok_or_else(|| format!("photo {id} not found"))
+    /// Find a photo by its absolute path (mutable).
+    pub fn find_photo_mut(&mut self, path: &Path) -> Result<&mut Photo, String> {
+        self.photos
+            .get_mut(path)
+            .ok_or_else(|| format!("photo {} not found", path.display()))
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PhotoBatch {
-    pub id: Uuid,
+/// One immediate subfolder of a browsed folder, for the lazy sidebar tree.
+/// `has_subfolders` drives the expand chevron; `photo_count` is direct images.
+#[derive(Debug, Clone, Serialize)]
+pub struct FolderEntry {
     pub name: String,
-    pub source_path: PathBuf,
-    pub photos: Vec<Photo>,
-}
-
-impl PhotoBatch {
-    pub fn new(name: String, source_path: PathBuf) -> Self {
-        Self {
-            id: Uuid::new_v4(),
-            name,
-            source_path,
-            photos: Vec::new(),
-        }
-    }
+    pub path: PathBuf,
+    pub photo_count: usize,
+    pub has_subfolders: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Photo {
-    pub id: Uuid,
     pub path: PathBuf,
     pub width: u32,
     pub height: u32,
@@ -213,7 +204,6 @@ mod tests {
 
     fn photo(width: u32, height: u32) -> Photo {
         Photo {
-            id: Uuid::new_v4(),
             path: PathBuf::from("x.jpg"),
             width,
             height,

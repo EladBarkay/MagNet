@@ -4,7 +4,6 @@ use image::metadata::Orientation as ExifOrientation;
 use image::{DynamicImage, ImageDecoder};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
-use uuid::Uuid;
 
 /// Decode an image with its EXIF orientation applied, so a photo rotated via
 /// Explorer/Photos (which often only flips the EXIF Orientation tag) shows
@@ -102,7 +101,6 @@ pub fn scan_photo(path: PathBuf) -> Result<Photo> {
     let exif_orientation = read_exif_orientation(&path);
     let (size_bytes, created, modified) = file_times(&path);
     Ok(Photo {
-        id: Uuid::new_v4(),
         path,
         width,
         height,

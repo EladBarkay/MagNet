@@ -26,12 +26,12 @@ pub struct AppState {
     pub watcher: Mutex<FsWatcher>,
     /// Current auth state (session + entitlement). `None` => signed out / Free.
     pub auth: Mutex<Option<AuthState>>,
-    /// Framed preview cache keyed by (photo_id, preset_id).
+    /// Framed preview cache keyed by (photo_path, preset_id).
     pub preview_cache: Arc<Mutex<PreviewCache>>,
 }
 
-/// Framed preview bytes keyed by (photo_id, preset_id).
-type PreviewCache = HashMap<(Uuid, Uuid), Vec<u8>>;
+/// Framed preview bytes keyed by (photo_path, preset_id).
+type PreviewCache = HashMap<(PathBuf, Uuid), Vec<u8>>;
 
 impl AppState {
     /// Effective tier — Free unless a valid Pro/Studio entitlement is active.
@@ -57,11 +57,11 @@ impl AppState {
     }
 
     /// Drop cached framed previews for the given photo across all presets.
-    pub fn invalidate_preview_for_photo(&self, photo_id: Uuid) {
+    pub fn invalidate_preview_for_photo(&self, photo_path: &std::path::Path) {
         self.preview_cache
             .lock()
             .unwrap()
-            .retain(|(pid, _), _| *pid != photo_id);
+            .retain(|(p, _), _| p != photo_path);
     }
 }
 
@@ -191,10 +191,9 @@ pub fn run() {
             commands::project::save_event,
             commands::project::set_photo_copies,
             commands::project::set_output_folder,
-            commands::project::list_folder_tree,
+            commands::project::list_folder,
             commands::project::select_folder,
             commands::project::delete_event,
-            commands::project::refresh_batch,
             commands::project::sync_watches,
             commands::gallery::get_thumbnail,
             commands::gallery::get_frame_thumbnail,
@@ -204,7 +203,7 @@ pub fn run() {
             commands::gallery::clear_orientation_override,
             commands::batch::save_batch,
             commands::batch::print_photos,
-            commands::faces::count_faces_in_batch,
+            commands::faces::count_faces,
             commands::canvas_preset::create_canvas_preset,
             commands::canvas_preset::update_canvas_preset,
             commands::canvas_preset::delete_canvas_preset,

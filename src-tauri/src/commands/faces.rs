@@ -9,7 +9,6 @@ use std::io::Cursor;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tauri::{Emitter, State};
-use uuid::Uuid;
 
 /// SeetaFace frontal detection model, embedded so there's no runtime path to
 /// resolve or bundle separately. ~1.2MB.
@@ -39,7 +38,7 @@ fn new_detector() -> Box<dyn Detector> {
 
 /// Count faces in one photo. Decode failures count as 0 (skip, like the export
 /// path) so one bad file doesn't abort the scan.
-fn count_faces(detector: &mut dyn Detector, path: &Path) -> u32 {
+fn count_faces_in_image(detector: &mut dyn Detector, path: &Path) -> u32 {
     let Ok(img) = image::open(path) else { return 0 };
     let img = if img.width().max(img.height()) > MAX_SIDE {
         img.resize(MAX_SIDE, MAX_SIDE, image::imageops::FilterType::Triangle)
@@ -54,52 +53,34 @@ fn count_faces(detector: &mut dyn Detector, path: &Path) -> u32 {
     detector.detect(&ImageData::new(&gray, w, h)).len() as u32
 }
 
-/// Scan every photo in a batch and return a `photoId → face count` map. The
-/// frontend uses it to seed per-photo export quantities (a suggestion the user
-/// can still adjust). Runs on the bounded rayon pool off the async runtime;
-/// emits `face-scan-progress` per photo so the UI shows a bar.
+/// Scan the given photos and return a `photoPath → face count` map. The frontend
+/// passes the active folder's photo paths (or the selected subset) and uses the
+/// result to seed per-photo export quantities (a suggestion the user can adjust).
+/// Runs on the bounded rayon pool off the async runtime; emits `face-scan-progress`
+/// per photo so the UI shows a bar.
 #[tauri::command]
-pub async fn count_faces_in_batch(
-    event_id: Uuid,
-    batch_id: Uuid,
-    photo_ids: Option<Vec<Uuid>>,
+pub async fn count_faces(
+    photo_paths: Vec<std::path::PathBuf>,
     app: tauri::AppHandle,
-    state: State<'_, AppState>,
-) -> Result<HashMap<Uuid, u32>, String> {
-    let event = state.store.load(event_id).tauri()?;
-    let batch = event
-        .batches
-        .iter()
-        .find(|b| b.id == batch_id)
-        .ok_or("batch not found")?;
-    // Scan only the requested photos when given a non-empty subset; otherwise the
-    // whole batch.
-    let only: Option<std::collections::HashSet<Uuid>> = photo_ids
-        .filter(|ids| !ids.is_empty())
-        .map(|ids| ids.into_iter().collect());
-    let paths: Vec<(Uuid, std::path::PathBuf)> = batch
-        .photos
-        .iter()
-        .filter(|p| only.as_ref().is_none_or(|s| s.contains(&p.id)))
-        .map(|p| (p.id, p.path.clone()))
-        .collect();
-    let total = paths.len();
+    _state: State<'_, AppState>,
+) -> Result<HashMap<std::path::PathBuf, u32>, String> {
+    let total = photo_paths.len();
 
     tokio::task::spawn_blocking(move || {
         let done = AtomicUsize::new(0);
         run_bounded(|| {
-            paths
+            photo_paths
                 .par_iter()
-                .map_init(new_detector, |det, (id, path)| {
-                    let n = count_faces(det.as_mut(), path);
+                .map_init(new_detector, |det, path| {
+                    let n = count_faces_in_image(det.as_mut(), path);
                     let d = done.fetch_add(1, Ordering::SeqCst) + 1;
                     let _ = app.emit(
                         crate::constants::events::FACE_SCAN_PROGRESS,
                         FaceScanProgress { done: d, total },
                     );
-                    (*id, n)
+                    (path.clone(), n)
                 })
-                .collect::<HashMap<Uuid, u32>>()
+                .collect::<HashMap<std::path::PathBuf, u32>>()
         })
     })
     .await

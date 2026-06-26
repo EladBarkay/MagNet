@@ -40,18 +40,18 @@ pub async fn get_frame_thumbnail(path: String) -> Result<Vec<u8>, String> {
 #[tauri::command]
 pub async fn get_framed_preview(
     event_id: Uuid,
-    photo_id: Uuid,
+    photo_path: std::path::PathBuf,
     preset_id: Option<Uuid>,
     state: State<'_, AppState>,
 ) -> Result<Vec<u8>, String> {
     // `None` preset → raw full-photo preview; keyed under the nil UUID so it
     // shares the same cache without a separate map.
-    let cache_key = (photo_id, preset_id.unwrap_or_else(Uuid::nil));
+    let cache_key = (photo_path.clone(), preset_id.unwrap_or_else(Uuid::nil));
     if let Some(cached) = state.preview_cache.lock().unwrap().get(&cache_key).cloned() {
         return Ok(cached);
     }
     let event = state.store.load(event_id).tauri()?;
-    let photo = event.find_photo(photo_id)?;
+    let photo = event.find_photo(&photo_path)?;
     let preset = match preset_id {
         Some(pid) => Some(event.find_frame_preset(pid)?),
         None => None,
@@ -82,27 +82,27 @@ pub async fn clear_framed_preview_cache(
 #[tauri::command]
 pub async fn set_orientation_override(
     event_id: Uuid,
-    photo_id: Uuid,
+    photo_path: std::path::PathBuf,
     orientation: Orientation,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let mut event = state.store.load(event_id).tauri()?;
-    event.find_photo_mut(photo_id)?.orientation_override = Some(orientation);
+    event.find_photo_mut(&photo_path)?.orientation_override = Some(orientation);
     state.store.save(&event).tauri()?;
     // Invalidate cached previews for this photo across all presets.
-    state.invalidate_preview_for_photo(photo_id);
+    state.invalidate_preview_for_photo(&photo_path);
     Ok(())
 }
 
 #[tauri::command]
 pub async fn clear_orientation_override(
     event_id: Uuid,
-    photo_id: Uuid,
+    photo_path: std::path::PathBuf,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let mut event = state.store.load(event_id).tauri()?;
-    event.find_photo_mut(photo_id)?.orientation_override = None;
+    event.find_photo_mut(&photo_path)?.orientation_override = None;
     state.store.save(&event).tauri()?;
-    state.invalidate_preview_for_photo(photo_id);
+    state.invalidate_preview_for_photo(&photo_path);
     Ok(())
 }
