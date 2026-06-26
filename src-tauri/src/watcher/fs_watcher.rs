@@ -33,6 +33,14 @@ impl FsWatcher {
         Ok(())
     }
 
+    /// Watch a directory and all its subdirectories. Used for the event root so
+    /// any folder the photographer browses to (including new SD dumps) is covered
+    /// by a single watch.
+    pub fn watch_recursive(&mut self, path: &Path) -> Result<()> {
+        self.watcher.watch(path, RecursiveMode::Recursive)?;
+        Ok(())
+    }
+
     pub fn unwatch(&mut self, path: &Path) -> Result<()> {
         let _ = self.watcher.unwatch(path);
         Ok(())
