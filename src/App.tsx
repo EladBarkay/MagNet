@@ -531,7 +531,7 @@ export default function App() {
     return () => window.removeEventListener("keydown", handler);
   }, [lightboxOpen]);
 
-  // Grid cell size, shared by the BatchTabs −/+ buttons and the Ctrl+wheel /
+  // Grid cell size, shared by the ViewControls −/+ buttons and the Ctrl+wheel /
   // Ctrl+± handlers above (same clamp 100–280, step 20).
   const zoomCell = (dir: 1 | -1) =>
     setCellSize((c) => Math.min(280, Math.max(100, c + dir * 20)));
