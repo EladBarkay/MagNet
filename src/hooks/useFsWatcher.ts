@@ -9,6 +9,7 @@ type Handlers = {
   onEvent: (e: OrenewEvent) => void;
   onActiveBatch: (b: PhotoBatch) => void;
   onFrameChanged: () => void;
+  onTreeChanged: () => void;
 };
 
 /**
@@ -31,6 +32,9 @@ export function useFsWatcher(
   useEffect(() => { activeBatchRef.current = activeBatch; }, [activeBatch]);
   useEffect(() => { handlersRef.current = handlers; });
 
+  // Debounce the folder-tree refetch: a single SD dump fires many file events.
+  const treeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     const norm = (s: string) => s.replace(/\\/g, "/");
 
@@ -51,7 +55,12 @@ export function useFsWatcher(
         return;
       }
 
-      // Photo change → refresh the owning batch.
+      // Any other change under the watched root may add/remove a folder → refetch
+      // the sidebar tree (debounced).
+      if (treeTimer.current) clearTimeout(treeTimer.current);
+      treeTimer.current = setTimeout(() => handlersRef.current.onTreeChanged(), 300);
+
+      // Photo change → refresh the owning batch (if it's a folder we've opened).
       const folder = parentDir(changedPath);
       const batch = cur.batches.find((b) => norm(b.source_path) === folder);
       if (!batch) return;

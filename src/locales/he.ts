@@ -83,6 +83,7 @@ const he = {
     add: "+ הוספה",
     noBatches: "אין נגלות —",
     addFolder: "הוסף תיקייה",
+    revealFolder: "לחיצה כפולה לפתיחה במנהל הקבצים",
     path: "נתיב: {{path}}",
     removeBatch: "הסרת נגלה",
     frames: "מסגרות",

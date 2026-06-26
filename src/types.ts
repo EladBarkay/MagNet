@@ -31,6 +31,15 @@ export type PhotoBatch = {
   photos: Photo[];
 };
 
+// A folder in the event's filesystem tree (sidebar navigation). `photo_count`
+// is direct image files only, not counting subfolders.
+export type FolderNode = {
+  name: string;
+  path: string;
+  photo_count: number;
+  children: FolderNode[];
+};
+
 export type FramePreset = {
   id: string;
   name: string;

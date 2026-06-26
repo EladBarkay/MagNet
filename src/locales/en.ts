@@ -82,6 +82,7 @@ const en = {
     add: "+ Add",
     noBatches: "No batches —",
     addFolder: "add a folder",
+    revealFolder: "Double-click to reveal in file manager",
     path: "path: {{path}}",
     removeBatch: "Remove batch",
     frames: "Frames",

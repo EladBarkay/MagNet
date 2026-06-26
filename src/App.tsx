@@ -12,17 +12,17 @@ import CanvasPresetForm from "./components/CanvasPresetForm";
 import EventConfigDialog from "./components/EventConfigDialog";
 import { Modal } from "./components/ui";
 import Toolbar from "./components/Toolbar";
-import BatchTabs from "./components/BatchTabs";
+import Sidebar from "./components/Sidebar";
+import ViewControls from "./components/ViewControls";
 import ActionBar from "./components/ActionBar";
 import EmptyState from "./components/EmptyState";
 import { useFsWatcher } from "./hooks/useFsWatcher";
 import { useAuthDeepLink } from "./hooks/useAuthDeepLink";
 import { useUpdater } from "./hooks/useUpdater";
 import { listDevices, currentDeviceHash } from "./lib/auth";
-import { reorderById } from "./lib/reorder";
 import { rangeIds } from "./lib/selection";
 import { EVENTS } from "./constants";
-import { OrenewEvent, Orientation, Photo, PhotoBatch, FramePreset, CanvasPreset, Entitlement, AuthResult, Device } from "./types";
+import { OrenewEvent, Orientation, Photo, PhotoBatch, FolderNode, FramePreset, CanvasPreset, Entitlement, AuthResult, Device } from "./types";
 
 type ModalKind = "export" | "settings" | "eventConfig" | null;
 export type SortKey = "name" | "created" | "modified" | "size";
@@ -31,10 +31,10 @@ export default function App() {
   const { t, i18n } = useTranslation();
   const [event, setEvent] = useState<OrenewEvent | null>(null);
   const [activeBatch, setActiveBatch] = useState<PhotoBatch | null>(null);
+  const [folderTree, setFolderTree] = useState<FolderNode | null>(null);
   const [selected, setSelected] = useState<Photo | null>(null);
   const [modal, setModal] = useState<ModalKind>(null);
   const [status, setStatus] = useState("");
-  const [draggedBatchId, setDraggedBatchId] = useState<string | null>(null);
   const [entitlement, setEntitlement] = useState<Entitlement | null>(null);
   // Device-seat picker: shown on the seat-limit interrupt ("limit") or from
   // Settings → Manage devices ("manage"). `null` => hidden.
@@ -169,6 +169,7 @@ export default function App() {
       setSelected((prev) => (prev ? (b.photos.find((p) => p.id === prev.id) ?? prev) : prev));
     },
     onFrameChanged: () => setFrameNonce((n) => n + 1),
+    onTreeChanged: refreshTree,
   });
 
   // Seed the global copy-queue from each photo's persisted `copies` (across all
@@ -221,14 +222,44 @@ export default function App() {
       setStatus(t("app.loading"));
       const evt = await invoke<OrenewEvent>("open_event", { path: folder });
       setEvent(evt);
-      setActiveBatch(evt.batches[0] ?? null);
+      setActiveBatch(null);
       clearSelection();
       setPhotoQueue(seedQueueFromEvent(evt));
       invoke("sync_watches", { eventId: evt.id }).catch(() => {});
+      // Load the folder tree and open the root folder so the gallery isn't empty.
+      const tree = await invoke<FolderNode>("list_folder_tree", { root: evt.root_path ?? folder });
+      setFolderTree(tree);
+      await selectFolder(tree.path, evt);
       setStatus("");
     } catch (e) {
       setStatus(t("app.error", { message: String(e) }));
     }
+  }
+
+  // Open a folder from the sidebar tree: lazy find-or-create its batch in Rust,
+  // then make it active. `forEvent` lets openEvent pass the just-loaded event
+  // before state has settled.
+  async function selectFolder(path: string, forEvent?: OrenewEvent) {
+    const evt = forEvent ?? event;
+    if (!evt) return;
+    try {
+      const updated = await invoke<OrenewEvent>("select_folder", { eventId: evt.id, folder: path });
+      setEvent(updated);
+      const batch = updated.batches.find((b) => b.source_path === path) ?? null;
+      setActiveBatch(batch); // seenIdsRef effect seeds any new photos to qty 1
+      clearSelection();
+    } catch (e) {
+      setStatus(t("app.error", { message: String(e) }));
+    }
+  }
+
+  // Re-fetch the folder tree (debounced by the watcher) so new/removed subfolders
+  // — e.g. a fresh SD dump — appear without reopening the event.
+  async function refreshTree() {
+    if (!event?.root_path) return;
+    try {
+      setFolderTree(await invoke<FolderNode>("list_folder_tree", { root: event.root_path }));
+    } catch {}
   }
 
   async function deleteEvent() {
@@ -243,39 +274,11 @@ export default function App() {
       await invoke("delete_event", { eventId: event.id });
       setEvent(null);
       setActiveBatch(null);
+      setFolderTree(null);
       setSelected(null);
     } catch (e) {
       setStatus(t("app.error", { message: String(e) }));
     }
-  }
-
-  async function deleteBatch(batch: PhotoBatch) {
-    if (!event) return;
-    const { confirm } = await import("@tauri-apps/plugin-dialog");
-    const yes = await confirm(
-      t("app.removeBatchConfirm", { name: batch.name }),
-      { title: t("app.removeBatchTitle"), kind: "warning" }
-    );
-    if (!yes) return;
-    try {
-      const updated = await invoke<OrenewEvent>("delete_batch", { eventId: event.id, batchId: batch.id });
-      updateEvent(updated);
-      if (activeBatch?.id === batch.id) {
-        setActiveBatch(updated.batches[0] ?? null);
-        setSelected(null);
-      }
-    } catch (e) {
-      setStatus(t("app.error", { message: String(e) }));
-    }
-  }
-
-  function reorderBatch(targetId: string) {
-    if (!event) return;
-    const batches = reorderById(event.batches, draggedBatchId, targetId);
-    if (!batches) return;
-    const updated = { ...event, batches };
-    setEvent(updated);
-    invoke("save_event", { event: updated }).catch(() => {});
   }
 
   async function deleteCanvasPreset(preset: CanvasPreset) {
@@ -316,28 +319,6 @@ export default function App() {
             ? remaining[0]?.id ?? null
             : event.active_frame_preset_id,
       });
-    } catch (e) {
-      setStatus(t("app.error", { message: String(e) }));
-    }
-  }
-
-  async function addBatch() {
-    if (!event) return;
-    try {
-      const { open } = await import("@tauri-apps/plugin-dialog");
-      const folder = await open({
-        directory: true,
-        multiple: false,
-        defaultPath: event.root_path ?? undefined,
-      });
-      if (!folder) return;
-      setStatus(t("app.loadingBatch"));
-      const updated = await invoke<OrenewEvent>("add_batch", { eventId: event.id, folder });
-      updateEvent(updated);
-      const newBatch = updated.batches[updated.batches.length - 1];
-      if (newBatch) setActiveBatch(newBatch); // seenIdsRef effect seeds its photos to qty 1
-      clearSelection();
-      setStatus("");
     } catch (e) {
       setStatus(t("app.error", { message: String(e) }));
     }
@@ -473,21 +454,24 @@ export default function App() {
     return () => window.removeEventListener("keydown", handler);
   }, [activeBatch, visiblePhotos]);
 
-  // Ctrl+Tab / Ctrl+Shift+Tab cycle through batches (wrap around). Selection +
-  // queue persist (combine across batches), same as clicking a tab.
+  // Ctrl+Tab / Ctrl+Shift+Tab cycle through the folder tree (DFS, wrap around).
+  // Selection + queue persist (combine across folders), same as clicking a folder.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.key !== "Tab") return;
-      if (!event || event.batches.length < 2) return;
+      if (!folderTree) return;
+      const paths: string[] = [];
+      const walk = (n: FolderNode) => { paths.push(n.path); n.children.forEach(walk); };
+      walk(folderTree);
+      if (paths.length < 2) return;
       e.preventDefault();
-      const n = event.batches.length;
-      const idx = event.batches.findIndex((b) => b.id === activeBatch?.id);
-      const nextIdx = e.shiftKey ? (idx - 1 + n) % n : (idx + 1) % n;
-      setActiveBatch(event.batches[nextIdx]);
+      const idx = paths.findIndex((p) => p === activeBatch?.source_path);
+      const nextIdx = e.shiftKey ? (idx - 1 + paths.length) % paths.length : (idx + 1) % paths.length;
+      selectFolder(paths[nextIdx]);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [event, activeBatch]);
+  }, [folderTree, activeBatch, event]);
 
   // Derive uniform qty across the targeted photos — 0 if empty or mixed values.
   const targetQtys = targetIds.map((id) => photoQueue[id] ?? 0);
@@ -654,38 +638,39 @@ export default function App() {
 
       {event ? (
         <>
-          <BatchTabs
-            event={event}
-            activeBatch={activeBatch}
-            draggedBatchId={draggedBatchId}
-            setDraggedBatchId={setDraggedBatchId}
-            onAddBatch={addBatch}
-            onSelectBatch={(b) => { setActiveBatch(b); /* keep selection + photoQueue; counts combine across batches */ }}
-            onDeleteBatch={deleteBatch}
-            onReorderBatch={reorderBatch}
-            hideEmpty={hideEmpty}
-            onToggleHideEmpty={() => setHideEmpty((v) => !v)}
-            cellSize={cellSize}
-            onZoom={zoomCell}
-            sortKey={sortKey}
-            sortDir={sortDir}
-            onSortKey={setSortKey}
-            onToggleSortDir={() => setSortDir((d) => (d === 1 ? -1 : 1))}
-          />
-
           <div className="flex flex-1 overflow-hidden">
-            <Gallery
-              photos={visiblePhotos}
-              selectedId={selected?.id ?? null}
-              selectedIds={selectedIds}
-              onPhotoClick={handlePhotoClick}
-              onPhotoDoubleClick={handlePhotoDoubleClick}
-              onBackgroundClick={clearSelection}
-              photoQueue={photoQueue}
-              onQtyDelta={adjustQty}
-              cellSize={cellSize}
-              onColCountChange={(n) => { colCountRef.current = n; }}
+            <Sidebar
+              tree={folderTree}
+              activePath={activeBatch?.source_path ?? null}
+              hideEmpty={hideEmpty}
+              onSelectFolder={(p) => selectFolder(p)}
             />
+            <div className="flex flex-col flex-1 overflow-hidden">
+              <ViewControls
+                hideEmpty={hideEmpty}
+                onToggleHideEmpty={() => setHideEmpty((v) => !v)}
+                cellSize={cellSize}
+                onZoom={zoomCell}
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onSortKey={setSortKey}
+                onToggleSortDir={() => setSortDir((d) => (d === 1 ? -1 : 1))}
+              />
+              <div className="flex flex-1 overflow-hidden">
+                <Gallery
+                  photos={visiblePhotos}
+                  selectedId={selected?.id ?? null}
+                  selectedIds={selectedIds}
+                  onPhotoClick={handlePhotoClick}
+                  onPhotoDoubleClick={handlePhotoDoubleClick}
+                  onBackgroundClick={clearSelection}
+                  photoQueue={photoQueue}
+                  onQtyDelta={adjustQty}
+                  cellSize={cellSize}
+                  onColCountChange={(n) => { colCountRef.current = n; }}
+                />
+              </div>
+            </div>
           </div>
 
           {activeBatch && activeBatch.photos.length > 0 && (
