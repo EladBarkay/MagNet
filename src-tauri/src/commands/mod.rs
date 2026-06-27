@@ -1,6 +1,6 @@
 pub mod auth;
-pub mod export;
 pub mod canvas_preset;
+pub mod export;
 pub mod faces;
 pub mod frame_preset;
 pub mod gallery;

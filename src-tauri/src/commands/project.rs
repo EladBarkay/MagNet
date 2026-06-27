@@ -69,7 +69,10 @@ pub async fn set_output_folder(
 /// has subfolders (drives the expand chevron). Cheap: reads `folder` plus one
 /// `read_dir` per child. Read-only.
 #[tauri::command]
-pub async fn list_folder(folder: PathBuf, state: State<'_, AppState>) -> Result<Vec<FolderEntry>, String> {
+pub async fn list_folder(
+    folder: PathBuf,
+    state: State<'_, AppState>,
+) -> Result<Vec<FolderEntry>, String> {
     let mut entries = Vec::new();
     for child in std::fs::read_dir(&folder).tauri()?.flatten() {
         let p = child.path();
@@ -90,7 +93,11 @@ pub async fn list_folder(folder: PathBuf, state: State<'_, AppState>) -> Result<
             let _ = watcher.watch(&p);
         }
         entries.push(FolderEntry {
-            name: p.file_name().unwrap_or(p.as_os_str()).to_string_lossy().into_owned(),
+            name: p
+                .file_name()
+                .unwrap_or(p.as_os_str())
+                .to_string_lossy()
+                .into_owned(),
             path: p,
             photo_count,
             has_subfolders,
