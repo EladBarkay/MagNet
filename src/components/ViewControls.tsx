@@ -1,8 +1,10 @@
 import { useTranslation } from "react-i18next";
-import type { SortKey } from "../App";
+import type { SortKey, ViewMode } from "../App";
 import { PictureIcon } from "./icons";
 
 type Props = {
+  viewMode: ViewMode;
+  onSetViewMode: (mode: ViewMode) => void;
   hideEmpty: boolean;
   onToggleHideEmpty: () => void;
   cellSize: number;
@@ -23,6 +25,7 @@ const MAX_CELL = 280;
  * in the grid.
  */
 export default function ViewControls({
+  viewMode, onSetViewMode,
   hideEmpty, onToggleHideEmpty, cellSize, onZoom,
   sortKey, sortDir, onSortKey, onToggleSortDir,
 }: Props) {
@@ -30,6 +33,13 @@ export default function ViewControls({
 
   return (
     <div className="flex items-center gap-3 px-3 py-1.5 bg-neutral-900 border-b border-neutral-800 shrink-0">
+      {/* View-mode toggle: plain gallery vs. export-canvas preview */}
+      <div className="flex items-center gap-0.5 rounded-full bg-neutral-800 p-0.5">
+        <ModeButton label={t("view.modeGallery")} active={viewMode === "gallery"} onClick={() => onSetViewMode("gallery")} />
+        <ModeButton label={t("view.modeCanvas")} active={viewMode === "canvas"} onClick={() => onSetViewMode("canvas")} />
+      </div>
+
+      {viewMode === "gallery" && <>
       <div className="flex items-center gap-1">
         <select
           value={sortKey}
@@ -80,7 +90,24 @@ export default function ViewControls({
           </button>
         </label>
       </div>
+      </>}
     </div>
+  );
+}
+
+function ModeButton({ label, active, onClick }: {
+  label: string; active: boolean; onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={[
+        "px-2.5 py-0.5 text-xs rounded-full transition-colors",
+        active ? "bg-accent text-accent-fg font-medium" : "text-neutral-300 hover:bg-white/10",
+      ].join(" ")}
+    >
+      {label}
+    </button>
   );
 }
 

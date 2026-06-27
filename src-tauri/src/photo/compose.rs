@@ -96,6 +96,26 @@ pub fn frame_photo_for_canvas(
     frames: &PreparedFrames,
 ) -> Result<DynamicImage> {
     let loaded = loader::load_photo(&photo.path)?;
+    Ok(frame_image_for_canvas(
+        &loaded, photo, preset, slot_w, slot_h, frames,
+    ))
+}
+
+/// Same framing as [`frame_photo_for_canvas`] but on an already-decoded source —
+/// lets callers supply a full-res photo (export) or a downscaled thumbnail
+/// (canvas preview) without re-reading the file. Steps 2–5 above.
+///
+/// ponytail: `crop_override` is applied directly to `source`. Today no UI sets it
+/// (always `None` → centered crop), so a thumbnail source is correct. If a manual
+/// crop UI lands, scale the rect to the source's dims for the preview path.
+pub fn frame_image_for_canvas(
+    source: &DynamicImage,
+    photo: &Photo,
+    preset: &FramePreset,
+    slot_w: u32,
+    slot_h: u32,
+    frames: &PreparedFrames,
+) -> DynamicImage {
     let orient = photo.effective_orientation();
     let ratio = orientation_ratio(preset, orient);
     let (target_w, target_h, rotate) = placement(preset, orient, slot_w, slot_h);
@@ -106,10 +126,14 @@ pub fn frame_photo_for_canvas(
 
     let crop_rect = photo
         .crop_override
-        .unwrap_or_else(|| crop::compute_crop_rect(loaded.width(), loaded.height(), ratio));
-    let scaled = imageops::crop_and_resize(&loaded, crop_rect, target_w, target_h);
+        .unwrap_or_else(|| crop::compute_crop_rect(source.width(), source.height(), ratio));
+    let scaled = imageops::crop_and_resize(source, crop_rect, target_w, target_h);
     let framed = imageops::overlay_frame(&scaled, frame_img);
-    Ok(if rotate { framed.rotate90() } else { framed })
+    if rotate {
+        framed.rotate90()
+    } else {
+        framed
+    }
 }
 
 #[cfg(test)]

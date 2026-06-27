@@ -34,7 +34,7 @@ pub struct PrintResult {
 
 /// Open both frame PNGs and pre-resize/convert them for a given slot — done once
 /// per save/print run so the per-photo hot path does no frame I/O or conversion.
-fn load_and_prepare_frames(
+pub(crate) fn load_and_prepare_frames(
     preset: &FramePreset,
     slot_w: u32,
     slot_h: u32,
@@ -67,7 +67,7 @@ where
 
 /// Expand a photo list by per-photo quantity: a photo with qty=3 appears 3 times,
 /// qty=0 skips it entirely.
-fn expand_by_quantity(photos: &[Photo], qty: impl Fn(&Photo) -> u32) -> Vec<Photo> {
+pub(crate) fn expand_by_quantity(photos: &[Photo], qty: impl Fn(&Photo) -> u32) -> Vec<Photo> {
     photos
         .iter()
         .flat_map(|p| std::iter::repeat_n(p.clone(), qty(p) as usize))
@@ -76,7 +76,7 @@ fn expand_by_quantity(photos: &[Photo], qty: impl Fn(&Photo) -> u32) -> Vec<Phot
 
 /// Collect the queued photos sorted by path (stable output order). Keys of
 /// `quantities` determine which photos are included.
-fn collect_selected(event: &Event, quantities: &HashMap<PathBuf, u32>) -> Vec<Photo> {
+pub(crate) fn collect_selected(event: &Event, quantities: &HashMap<PathBuf, u32>) -> Vec<Photo> {
     let mut photos: Vec<Photo> = event
         .photos
         .values()

@@ -198,6 +198,7 @@ pub fn run() {
             commands::gallery::get_thumbnail,
             commands::gallery::get_frame_thumbnail,
             commands::gallery::get_framed_preview,
+            commands::gallery::get_canvas_preview_page,
             commands::gallery::clear_framed_preview_cache,
             commands::gallery::set_orientation_override,
             commands::gallery::clear_orientation_override,
