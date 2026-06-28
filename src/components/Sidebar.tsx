@@ -46,9 +46,10 @@ function Node({
   onSelectFolder: (path: string) => void;
   defaultOpen?: boolean;
 }) {
-  const { t } = useTranslation();
   const [open, setOpen] = useState(defaultOpen);
   const [children, setChildren] = useState<FolderEntry[] | null>(null);
+  // Right-click context menu position (viewport coords), or null when closed.
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
 
   // Lazy-load immediate subfolders the first time the node opens.
   useEffect(() => {
@@ -72,13 +73,8 @@ function Node({
         ].join(" ")}
         style={{ paddingInlineStart: 8 + depth * 14 }}
         onClick={() => onSelectFolder(node.path)}
-        onDoubleClick={async () => {
-          try {
-            const { openPath } = await import("@tauri-apps/plugin-opener");
-            await openPath(node.path);
-          } catch {}
-        }}
-        title={t("sidebar.revealFolder")}
+        onDoubleClick={() => { if (node.has_subfolders) setOpen((v) => !v); }}
+        onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY }); }}
       >
         <button
           type="button"
@@ -97,6 +93,20 @@ function Node({
           </span>
         )}
       </div>
+      {menu && (
+        <FolderContextMenu
+          x={menu.x}
+          y={menu.y}
+          onClose={() => setMenu(null)}
+          onOpenInExplorer={async () => {
+            setMenu(null);
+            try {
+              const { openPath } = await import("@tauri-apps/plugin-opener");
+              await openPath(node.path);
+            } catch {}
+          }}
+        />
+      )}
       {open &&
         visibleChildren.map((c) => (
           <Node
@@ -108,6 +118,41 @@ function Node({
             onSelectFolder={onSelectFolder}
           />
         ))}
+    </>
+  );
+}
+
+// Minimal right-click menu: one action, dismissed by Escape or any outside click
+// (a full-screen transparent backdrop). Fixed-positioned at the cursor.
+function FolderContextMenu({
+  x, y, onClose, onOpenInExplorer,
+}: {
+  x: number;
+  y: number;
+  onClose: () => void;
+  onOpenInExplorer: () => void;
+}) {
+  const { t } = useTranslation();
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <>
+      <div className="fixed inset-0 z-[100]" onClick={onClose} onContextMenu={(e) => { e.preventDefault(); onClose(); }} />
+      <div
+        className="fixed z-[101] min-w-44 rounded-md border border-neutral-700 bg-neutral-800 py-1 shadow-xl"
+        style={{ top: y, left: x }}
+      >
+        <button
+          onClick={onOpenInExplorer}
+          className="w-full px-3 py-1.5 text-start text-sm text-neutral-200 hover:bg-neutral-700"
+        >
+          {t("sidebar.openInExplorer")}
+        </button>
+      </div>
     </>
   );
 }
