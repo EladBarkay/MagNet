@@ -345,10 +345,8 @@ export default function ExportDialog({
         </div>
         </div>
 
-        {/* Live print preview */}
-        <div className="w-80 shrink-0 flex flex-col min-h-0">
-          <ExportPreview event={event} frameId={frameId} canvasId={canvasId} quantities={quantities} />
-        </div>
+        {/* Live print preview (self-sizing, adjustable) */}
+        <ExportPreview event={event} frameId={frameId} canvasId={canvasId} quantities={quantities} />
         </div>
       </div>
     </Modal>
