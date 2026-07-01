@@ -27,7 +27,7 @@ chrono = { version = "0.4", features = ["serde"] }
 # Image processing
 image = { version = "0.25", features = ["jpeg", "png", "tiff"] }
 # SIMD crop+resize for the export hot path (pure Rust)
-fast_image_resize = "5"
+fast_image_resize = "6"
 
 # EXIF
 kamadak-exif = "0.5"
