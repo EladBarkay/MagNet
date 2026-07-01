@@ -30,7 +30,7 @@ image = { version = "0.25", features = ["jpeg", "png", "tiff"] }
 fast_image_resize = "5"
 
 # EXIF
-kamadak-exif = "0.5"
+kamadak-exif = "0.6"
 
 # Async / parallelism
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
